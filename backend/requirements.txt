@@ -1,0 +1,17 @@
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+sqlalchemy>=2.0.25
+sqlmodel>=0.0.14
+psycopg2-binary>=2.9.9
+alembic>=1.13.1
+pydantic>=2.5.3
+python-multipart>=0.0.6
+python-dateutil>=2.8.2
+numpy>=1.26.3
+
+# ML / Time-series forecasting
+pandas>=2.2.0
+requests>=2.31.0
+statsmodels>=0.14.1
+scipy>=1.12.0
+yfinance>=0.2.36

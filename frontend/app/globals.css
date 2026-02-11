@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a0a0a;
+  --foreground: #e5e5e5;
+  --card: #141414;
+  --surface: #1a1a1a;
+  --border: #262626;
+  --border-light: #333333;
+  --accent: #4ade80;
+  --accent-dim: #22c55e;
+  --muted: #737373;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--card); }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #404040; }
+
+/* Data tables */
+.data-table {
+  @apply w-full text-xs border-collapse;
+}
+.data-table th {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-weight: 500;
+  color: #737373;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+}
+.data-table td {
+  padding: 0.5rem 0.75rem;
+  color: #d4d4d4;
+  border-bottom: 1px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+}
+.data-table tr:hover td {
+  background: var(--surface);
+}
+
+/* Input fields */
+input[type="number"], input[type="text"], input[type="date"], select {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: #e5e5e5;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+input[type="number"]:focus, input[type="text"]:focus, input[type="date"]:focus, select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.15);
+}
+
+/* Buttons */
+@layer components {
+  .btn-primary {
+    @apply px-5 py-2.5 text-black rounded-lg text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+    background-color: var(--accent);
+  }
+  .btn-primary:hover {
+    background-color: var(--accent-dim);
+  }
+  .btn-secondary {
+    @apply px-4 py-2 text-neutral-200 rounded-lg text-sm font-medium transition-colors;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover {
+    background-color: var(--border);
+  }
+  .btn-danger {
+    @apply px-4 py-2 text-red-400 rounded-lg text-sm font-medium transition-colors;
+    background-color: rgba(127, 29, 29, 0.2);
+    border: 1px solid rgba(127, 29, 29, 0.4);
+  }
+  .btn-danger:hover {
+    background-color: rgba(127, 29, 29, 0.35);
+  }
+  .btn-outline-accent {
+    @apply px-5 py-2 rounded-full text-sm font-medium transition-colors;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+  }
+  .btn-outline-accent:hover {
+    background-color: rgba(74, 222, 128, 0.08);
+  }
+}

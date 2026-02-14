@@ -116,12 +116,19 @@ def _apply_volatility(
 def _deterministic_noise(seed: int, index: int) -> float:
     """
     Generate a deterministic noise value in [-1, 1] from seed + index.
-    Uses a simple linear congruential generator approach.
+    Uses multiple rounds of hashing to avoid periodic patterns.
     """
-    x = (seed * 1103515245 + index * 12345 + 67890) & 0x7FFFFFFF
-    x = ((x * 1103515245 + 12345) & 0x7FFFFFFF)
+    # Combine seed and index with bit mixing to avoid linear patterns
+    x = seed ^ (index * 2654435761)  # Knuth's multiplicative hash
+    
+    # Multiple rounds of mixing to break periodicity
+    for _ in range(3):
+        x = ((x ^ (x >> 16)) * 0x85ebca6b) & 0xFFFFFFFF
+        x = ((x ^ (x >> 13)) * 0xc2b2ae35) & 0xFFFFFFFF
+        x = (x ^ (x >> 16)) & 0xFFFFFFFF
+    
     # Map to [-1, 1]
-    return (x / 0x7FFFFFFF) * 2.0 - 1.0
+    return (x / 0xFFFFFFFF) * 2.0 - 1.0
 
 
 # ──────────────────────────────────────────────────────────

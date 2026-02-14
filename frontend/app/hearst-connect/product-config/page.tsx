@@ -19,6 +19,11 @@ interface TakeProfitEntry {
   sell_pct: number;
 }
 
+interface ExtraYieldStrikeEntry {
+  strike_price: number;
+  btc_share_pct: number;
+}
+
 /* ────────────────────────────────────────────────
  * Tooltip component for inline help
  * ──────────────────────────────────────────────── */
@@ -119,7 +124,7 @@ export default function ProductConfigPage() {
   const [sites, setSites] = useState<any[]>([]);
 
   // ── Product Structure ──
-  const [capitalRaised, setCapitalRaised] = useState(10_000_000);
+  const [capitalRaised, setCapitalRaised] = useState(1_000_000);
   const [exitFreq, setExitFreq] = useState('quarterly');
 
   // ── Allocation percentages (source of truth) ──
@@ -138,12 +143,12 @@ export default function ProductConfigPage() {
   const miningAllocated = Math.round(capitalRaised * miningPct / 100);
 
   // ── Bucket A: Yield Liquidity ──
-  const [yieldBaseApr, setYieldBaseApr] = useState(0.08);
+  const [yieldBaseApr, setYieldBaseApr] = useState(0.04);
   const [useAprSchedule, setUseAprSchedule] = useState(false);
   const [aprSchedule, setAprSchedule] = useState<AprScheduleEntry[]>([
-    { from_month: 0, to_month: 11, apr: 0.10 },
-    { from_month: 12, to_month: 23, apr: 0.08 },
-    { from_month: 24, to_month: 35, apr: 0.06 },
+    { from_month: 0, to_month: 11, apr: 0.05 },
+    { from_month: 12, to_month: 23, apr: 0.04 },
+    { from_month: 24, to_month: 35, apr: 0.03 },
   ]);
 
   // ── Bucket B: BTC Holding ──
@@ -152,11 +157,21 @@ export default function ProductConfigPage() {
   const [btcPriceLoading, setBtcPriceLoading] = useState(false);
   const [btcPriceUpdatedAt, setBtcPriceUpdatedAt] = useState<Date | null>(null);
 
+  // ── BTC Holding Split: Capital Reconstitution vs Extra Yield ──
+  const [capitalReconPct, setCapitalReconPct] = useState(100); // % of BTC for capital reconstitution
+  const [extraYieldStrikes, setExtraYieldStrikes] = useState<ExtraYieldStrikeEntry[]>([
+    { strike_price: 120000, btc_share_pct: 33.33 },
+    { strike_price: 150000, btc_share_pct: 33.33 },
+    { strike_price: 200000, btc_share_pct: 33.34 },
+  ]);
+
   // ── Derived target sell price: covers both holding + mining initial investment ──
   // Formula: (holdingAllocated + miningAllocated) / (holdingAllocated / buyingPrice)
   const btcQuantity = buyingPrice > 0 ? holdingAllocated / buyingPrice : 0;
-  const targetSellPrice = btcQuantity > 0
-    ? Math.round((holdingAllocated + miningAllocated) / btcQuantity)
+  const capitalReconBtc = btcQuantity * (capitalReconPct / 100);
+  const extraYieldBtc = btcQuantity * ((100 - capitalReconPct) / 100);
+  const targetSellPrice = capitalReconBtc > 0
+    ? Math.round((holdingAllocated + miningAllocated) / capitalReconBtc)
     : 0;
 
   // ── Bucket C: BTC Mining ──
@@ -175,6 +190,11 @@ export default function ProductConfigPage() {
   // ── Scenario Curve Selectors (simplified: auto bear/base/bull) ──
   const [selectedBtcFamily, setSelectedBtcFamily] = useState('');
   const [selectedNetFamily, setSelectedNetFamily] = useState('');
+
+  // ── Commercial Fees ──
+  const [upfrontCommercialPct, setUpfrontCommercialPct] = useState(6);
+  const [managementFeesPct, setManagementFeesPct] = useState(3);
+  const [performanceFeesPct, setPerformanceFeesPct] = useState(3);
 
   // ── State ──
   const [running, setRunning] = useState(false);
@@ -386,8 +406,9 @@ export default function ProductConfigPage() {
         btc_holding_bucket: {
           allocated_usd: holdingAllocated,
           buying_price_usd: buyingPrice,
-          // target_sell_price_usd is auto-computed server-side:
-          // (holding_allocated + mining_allocated) / (holding_allocated / buying_price)
+          // target_sell_price_usd is auto-computed server-side
+          capital_recon_pct: capitalReconPct,
+          extra_yield_strikes: capitalReconPct < 100 ? extraYieldStrikes : [],
         },
         mining_bucket: {
           allocated_usd: miningAllocated,
@@ -398,6 +419,11 @@ export default function ProductConfigPage() {
           bonus_yield_apr: miningBonusYield,
           take_profit_ladder: takeProfitLadder,
         },
+        commercial: (upfrontCommercialPct > 0 || managementFeesPct > 0 || performanceFeesPct > 0) ? {
+          upfront_commercial_pct: upfrontCommercialPct,
+          management_fees_pct: managementFeesPct,
+          performance_fees_pct: performanceFeesPct,
+        } : null,
         btc_price_curve_ids: btcCurveIds,
         network_curve_ids: netCurveIds,
       };
@@ -553,6 +579,22 @@ export default function ProductConfigPage() {
               </select>
             </div>
           </div>
+          
+          {/* Yield Structure */}
+          <div className="mt-4 pt-4 border-t border-hearst-border">
+            <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">Yield Structure</h4>
+            <div className="grid grid-cols-3 gap-4">
+              <InputField label="Base Yield APR" value={miningBaseYield} onChange={v => setMiningBaseYield(Number(v))} type="number" step={0.01} hint="8% base yield from mining" />
+              <InputField label="Bonus Yield APR" value={miningBonusYield} onChange={v => setMiningBonusYield(Number(v))} type="number" step={0.01} hint="+4% when BTC target hit" />
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-neutral-400">Combined APR</label>
+                <div className="w-full px-2 py-1.5 rounded bg-hearst-card border border-hearst-border-light text-sm text-hearst-accent tabular-nums font-semibold">
+                  {((miningBaseYield + miningBonusYield) * 100).toFixed(0)}% <span className="text-neutral-500 font-normal">when target hit</span>
+                </div>
+                <p className="text-[10px] text-neutral-600">Mining yield cap bumps to combined rate</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* ═══════════ SECTION B: Capital Allocation with Sliders ═══════════ */}
@@ -636,7 +678,7 @@ export default function ProductConfigPage() {
             <div className="border border-hearst-accent/20 rounded p-4 space-y-3 bg-hearst-accent/5">
               <h4 className="text-xs font-semibold text-hearst-accent uppercase">a. Yield Liquidity Product</h4>
               <div className="px-3 py-2 rounded bg-hearst-card text-sm text-neutral-300 tabular-nums">{formatUSD(yieldAllocated)}</div>
-              <InputField label="Base Annual APR" value={yieldBaseApr} onChange={v => setYieldBaseApr(Number(v))} type="number" step={0.01} hint="e.g. 0.08 = 8%" />
+              <InputField label="Base Annual APR" value={yieldBaseApr} onChange={v => setYieldBaseApr(Number(v))} type="number" step={0.01} hint="e.g. 0.04 = 4%" />
 
               <div className="flex items-center gap-2 text-xs">
                 <input
@@ -718,22 +760,148 @@ export default function ProductConfigPage() {
                 </div>
               </div>
 
-              {/* Target Sell Price — auto-derived to cover holding + mining investment */}
-              <div className="space-y-1">
-                <div className="flex items-center">
-                  <label className="text-xs font-medium text-neutral-400">Target Sell Price (USD)</label>
-                  <Tooltip text="Auto-computed: the BTC price at which selling the held BTC covers both the Holding and Mining initial investments. Formula: (Holding $ + Mining $) / BTC qty" />
+              {/* BTC Allocation Split: Capital Reconstitution vs Extra Yield */}
+              <div className="space-y-2 pt-2 border-t border-cyan-500/20">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-neutral-400">BTC Allocation Strategy</label>
+                  <Tooltip text="Split the BTC between capital reconstitution (sell at target to recover investment) and extra yield (sell at strike prices for additional returns)." />
                 </div>
-                <div className="w-full px-3 py-[7px] rounded bg-hearst-card border border-cyan-500/20 text-sm text-cyan-400 tabular-nums font-semibold">
-                  {formatUSD(targetSellPrice)}
+                
+                {/* Visual Split Bar */}
+                <div className="h-4 rounded-full overflow-hidden flex bg-hearst-card">
+                  <div 
+                    className="bg-cyan-500 transition-all duration-150" 
+                    style={{ width: `${capitalReconPct}%` }} 
+                  />
+                  <div 
+                    className="bg-amber-500 transition-all duration-150" 
+                    style={{ width: `${100 - capitalReconPct}%` }} 
+                  />
                 </div>
-                <p className="text-[10px] text-neutral-600">
-                  Covers: {formatUSD(holdingAllocated)} (holding) + {formatUSD(miningAllocated)} (mining) = {formatUSD(holdingAllocated + miningAllocated)}
-                </p>
+                
+                <div className="flex justify-between text-[10px]">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded bg-cyan-500" />
+                    <span className="text-cyan-400">Capital Recon: {capitalReconPct.toFixed(0)}%</span>
+                    <span className="text-neutral-600">({capitalReconBtc.toFixed(4)} BTC)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded bg-amber-500" />
+                    <span className="text-amber-400">Extra Yield: {(100 - capitalReconPct).toFixed(0)}%</span>
+                    <span className="text-neutral-600">({extraYieldBtc.toFixed(4)} BTC)</span>
+                  </div>
+                </div>
+
+                {/* Slider */}
+                <div className="slider-holding">
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={capitalReconPct}
+                    onChange={e => setCapitalReconPct(Number(e.target.value))}
+                    className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, #06b6d4 ${capitalReconPct}%, #f59e0b ${capitalReconPct}%)`,
+                    }}
+                  />
+                </div>
               </div>
-              {buyingPrice > 0 && targetSellPrice > buyingPrice && (
-                <div className="text-[10px] text-neutral-500">
-                  Required BTC appreciation: {(((targetSellPrice - buyingPrice) / buyingPrice) * 100).toFixed(1)}% from buying price
+
+              {/* Capital Reconstitution Section */}
+              {capitalReconPct > 0 && (
+                <div className="space-y-2 p-3 rounded border border-cyan-500/30 bg-cyan-950/20">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-cyan-400 uppercase">Capital Reconstitution</span>
+                    <span className="text-[10px] text-neutral-500">{capitalReconBtc.toFixed(4)} BTC</span>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center">
+                      <label className="text-xs font-medium text-neutral-400">Target Sell Price (USD)</label>
+                      <Tooltip text="Auto-computed: the BTC price at which selling the capital reconstitution BTC covers both the Holding and Mining initial investments." />
+                    </div>
+                    <div className="w-full px-3 py-[7px] rounded bg-hearst-card border border-cyan-500/20 text-sm text-cyan-400 tabular-nums font-semibold">
+                      {formatUSD(targetSellPrice)}
+                    </div>
+                    <p className="text-[10px] text-neutral-600">
+                      Covers: {formatUSD(holdingAllocated)} (holding) + {formatUSD(miningAllocated)} (mining) = {formatUSD(holdingAllocated + miningAllocated)}
+                    </p>
+                  </div>
+                  {buyingPrice > 0 && targetSellPrice > buyingPrice && (
+                    <div className="text-[10px] text-neutral-500">
+                      Required BTC appreciation: {(((targetSellPrice - buyingPrice) / buyingPrice) * 100).toFixed(1)}% from buying price
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Extra Yield Strike Ladder Section */}
+              {capitalReconPct < 100 && (
+                <div className="space-y-2 p-3 rounded border border-amber-500/30 bg-amber-950/20">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-amber-400 uppercase">Extra Yield Strikes</span>
+                    <span className="text-[10px] text-neutral-500">{extraYieldBtc.toFixed(4)} BTC total</span>
+                  </div>
+                  <p className="text-[10px] text-neutral-600">Sell BTC at strike prices to generate additional yield</p>
+                  
+                  <div className="space-y-2">
+                    {extraYieldStrikes.map((strike, idx) => {
+                      const strikeBtcAmount = extraYieldBtc * (strike.btc_share_pct / 100);
+                      const strikeUsdValue = strikeBtcAmount * strike.strike_price;
+                      return (
+                        <div key={idx} className="flex items-center gap-2 text-xs">
+                          <span className="text-amber-400 font-medium w-4">{idx + 1}.</span>
+                          <div className="flex-1 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-neutral-500 w-16">Strike $</span>
+                              <input
+                                type="number"
+                                value={strike.strike_price}
+                                onChange={e => {
+                                  const updated = [...extraYieldStrikes];
+                                  updated[idx] = { ...updated[idx], strike_price: Number(e.target.value) };
+                                  setExtraYieldStrikes(updated);
+                                }}
+                                className="flex-1"
+                                step={1000}
+                              />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-neutral-500 w-16">Share %</span>
+                              <input
+                                type="number"
+                                value={strike.btc_share_pct}
+                                onChange={e => {
+                                  const updated = [...extraYieldStrikes];
+                                  updated[idx] = { ...updated[idx], btc_share_pct: Number(e.target.value) };
+                                  setExtraYieldStrikes(updated);
+                                }}
+                                className="w-20"
+                                step={1}
+                                min={0}
+                                max={100}
+                              />
+                              <span className="text-neutral-600 text-[10px]">
+                                = {strikeBtcAmount.toFixed(4)} BTC → {formatUSD(strikeUsdValue)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Share validation */}
+                  {(() => {
+                    const totalShare = extraYieldStrikes.reduce((sum, s) => sum + s.btc_share_pct, 0);
+                    const isValid = Math.abs(totalShare - 100) < 0.1;
+                    return (
+                      <div className={`text-[10px] ${isValid ? 'text-green-400' : 'text-amber-400'}`}>
+                        Total share: {totalShare.toFixed(1)}% {!isValid && '(should equal 100%)'}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -756,14 +924,6 @@ export default function ProductConfigPage() {
               />
               <InputField label="Miner Count" value={minerCount} onChange={v => setMinerCount(Number(v))} type="number" min={1} hint="Auto-calculated from allocation / miner price" />
 
-              <div className="grid grid-cols-2 gap-2">
-                <InputField label="Base Yield APR" value={miningBaseYield} onChange={v => setMiningBaseYield(Number(v))} type="number" step={0.01} hint="8% base yield" />
-                <InputField label="Bonus Yield APR" value={miningBonusYield} onChange={v => setMiningBonusYield(Number(v))} type="number" step={0.01} hint="+4% when BTC target hit" />
-              </div>
-              <p className="text-[10px] text-neutral-600">
-                Combined: {((miningBaseYield + miningBonusYield) * 100).toFixed(0)}% APR when BTC holding target is hit
-              </p>
-
               {/* Take-Profit Ladder */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -784,7 +944,106 @@ export default function ProductConfigPage() {
           </div>
         </div>
 
-        {/* ═══════════ SECTION C: Simplified Scenario Selectors ═══════════ */}
+        {/* ═══════════ SECTION C: Commercial Fees ═══════════ */}
+        <div className="border border-hearst-border rounded p-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Commercial</h3>
+              <p className="text-[10px] text-neutral-600 mt-1">Configure fee structure for the product</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            {/* Upfront Commercial */}
+            <div className="border border-amber-500/20 rounded p-4 space-y-3 bg-amber-950/10">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-semibold text-amber-400 uppercase">1. Upfront Commercial</h4>
+                <Tooltip text="Percentage of total investment deducted upfront. This amount is removed proportionally from all three buckets at inception and is not invested." />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-neutral-400">Fee (%)</label>
+                <input
+                  type="number"
+                  value={upfrontCommercialPct}
+                  onChange={e => setUpfrontCommercialPct(Math.max(0, Math.min(100, Number(e.target.value))))}
+                  className="w-full"
+                  step={0.1}
+                  min={0}
+                  max={100}
+                />
+                <p className="text-[10px] text-neutral-600">
+                  {upfrontCommercialPct > 0 
+                    ? `${formatUSD(capitalRaised * upfrontCommercialPct / 100)} deducted at start`
+                    : 'No upfront deduction'}
+                </p>
+              </div>
+            </div>
+
+            {/* Management Fees */}
+            <div className="border border-amber-500/20 rounded p-4 space-y-3 bg-amber-950/10">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-semibold text-amber-400 uppercase">2. Management Fees</h4>
+                <Tooltip text="Annual percentage fee based on the dollar value investment. Captured monthly from the capitalization bucket (reduces investor returns)." />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-neutral-400">Annual Fee (%)</label>
+                <input
+                  type="number"
+                  value={managementFeesPct}
+                  onChange={e => setManagementFeesPct(Math.max(0, Math.min(10, Number(e.target.value))))}
+                  className="w-full"
+                  step={0.1}
+                  min={0}
+                  max={10}
+                />
+                <p className="text-[10px] text-neutral-600">
+                  {managementFeesPct > 0 
+                    ? `~${formatUSD(capitalRaised * managementFeesPct / 100 / 12)}/mo from capitalization`
+                    : 'No management fee'}
+                </p>
+              </div>
+            </div>
+
+            {/* Performance Fees */}
+            <div className="border border-amber-500/20 rounded p-4 space-y-3 bg-amber-950/10">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-semibold text-amber-400 uppercase">3. Performance Fees</h4>
+                <Tooltip text="Percentage captured from the capitalization overhead (value above initial mining investment). Only charged if positive returns are delivered." />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-neutral-400">Fee on Overhead (%)</label>
+                <input
+                  type="number"
+                  value={performanceFeesPct}
+                  onChange={e => setPerformanceFeesPct(Math.max(0, Math.min(50, Number(e.target.value))))}
+                  className="w-full"
+                  step={1}
+                  min={0}
+                  max={50}
+                />
+                <p className="text-[10px] text-neutral-600">
+                  {performanceFeesPct > 0 
+                    ? `${performanceFeesPct}% of capitalization above ${formatUSD(miningAllocated)}`
+                    : 'No performance fee'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {(upfrontCommercialPct > 0 || managementFeesPct > 0 || performanceFeesPct > 0) && (
+            <div className="mt-4 px-3 py-2 rounded bg-amber-900/20 border border-amber-600/30 text-xs text-amber-300">
+              <span className="font-semibold">Commercial fees configured:</span>{' '}
+              {upfrontCommercialPct > 0 && <span>{upfrontCommercialPct}% upfront</span>}
+              {upfrontCommercialPct > 0 && (managementFeesPct > 0 || performanceFeesPct > 0) && <span> + </span>}
+              {managementFeesPct > 0 && <span>{managementFeesPct}% annual management</span>}
+              {managementFeesPct > 0 && performanceFeesPct > 0 && <span> + </span>}
+              {performanceFeesPct > 0 && <span>{performanceFeesPct}% performance</span>}
+              <span className="text-amber-400/70 ml-2">— Fees will be deducted from product returns</span>
+            </div>
+          )}
+        </div>
+
+        {/* ═══════════ SECTION D: Simplified Scenario Selectors ═══════════ */}
         <div className="border border-hearst-border rounded p-4">
           <div className="flex items-center justify-between mb-4">
             <div>

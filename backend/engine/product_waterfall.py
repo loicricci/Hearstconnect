@@ -45,7 +45,7 @@ def simulate_product_3y(
     # Calibration
     calibration_uptime_factor: float = 1.0,
     calibration_production_adj: float = 1.0,
-    # Take-profit ladder
+    # Take-profit ladder (each entry triggers only once)
     take_profit_ladder: List[Dict] = None,
 ) -> Dict:
     """
@@ -69,6 +69,9 @@ def simulate_product_3y(
     cumulative_yield_paid = 0.0
     total_btc_produced = 0.0
     total_btc_sold = 0.0
+    
+    # Track which take-profit levels have been triggered (each triggers only once)
+    take_profit_triggered = [False] * len(take_profit_ladder)
 
     # Applied uptime with calibration
     effective_uptime = uptime * calibration_uptime_factor * (1 - curtailment_pct)
@@ -160,14 +163,19 @@ def simulate_product_3y(
 
         # ──────────────────────────────────────────────
         # 7) TAKE-PROFIT LADDER (on capitalization bucket)
+        # Each level triggers only ONCE when price first exceeds the trigger
         # ──────────────────────────────────────────────
         take_profit_sold_usd = 0.0
-        for tp in take_profit_ladder:
+        for i, tp in enumerate(take_profit_ladder):
+            # Skip if this level was already triggered
+            if take_profit_triggered[i]:
+                continue
             if spot_price >= tp.get("price_trigger", float("inf")) and capitalization_btc > 0:
                 sell_btc = capitalization_btc * tp.get("sell_pct", 0)
                 take_profit_sold_usd += sell_btc * spot_price
                 capitalization_btc -= sell_btc
                 total_btc_sold += sell_btc
+                take_profit_triggered[i] = True  # Mark as triggered
 
         # Recalculate capitalization after take-profit
         capitalization_usd = capitalization_btc * spot_price

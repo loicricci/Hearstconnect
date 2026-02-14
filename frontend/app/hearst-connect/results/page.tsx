@@ -25,7 +25,7 @@ const SCENARIO_LABELS: Record<string, string> = {
   bull: 'Bull',
 };
 
-type ViewTab = 'overview' | 'yield' | 'holding' | 'mining' | 'waterfall';
+type ViewTab = 'overview' | 'yield' | 'holding' | 'mining' | 'btc_mgmt' | 'commercial' | 'waterfall';
 
 export default function ResultsPage() {
   const searchParams = useSearchParams();
@@ -100,6 +100,8 @@ export default function ResultsPage() {
     { key: 'yield', label: 'Yield Liquidity' },
     { key: 'holding', label: 'BTC Holding' },
     { key: 'mining', label: 'BTC Mining' },
+    { key: 'btc_mgmt', label: 'BTC Under Management' },
+    { key: 'commercial', label: 'Commercial' },
     { key: 'waterfall', label: 'Waterfall Detail' },
   ];
 
@@ -196,54 +198,86 @@ export default function ResultsPage() {
           </div>
 
           {/* ═══════════ Key Metrics Comparison ═══════════ */}
-          <div className="border border-hearst-border rounded overflow-hidden">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Metric</th>
-                  {scenarios.map(s => (
-                    <th key={s} style={{ color: SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS] }}>
-                      {SCENARIO_LABELS[s] || s}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="font-medium text-neutral-400">Final Portfolio Value</td>
-                  {scenarios.map(s => (
-                    <td key={s} className="font-mono">{formatUSD(runData.scenario_results[s]?.aggregated?.metrics?.final_portfolio_usd || 0)}</td>
-                  ))}
-                </tr>
-                <tr>
-                  <td className="font-medium text-neutral-400">Total Return</td>
-                  {scenarios.map(s => {
-                    const pct = runData.scenario_results[s]?.aggregated?.metrics?.total_return_pct || 0;
-                    return <td key={s} className={`font-mono ${pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatPercent(pct)}</td>;
-                  })}
-                </tr>
-                <tr>
-                  <td className="font-medium text-neutral-400">Capital Preservation</td>
-                  {scenarios.map(s => {
-                    const ratio = runData.scenario_results[s]?.aggregated?.metrics?.capital_preservation_ratio || 0;
-                    return <td key={s} className={`font-mono ${ratio >= 1 ? 'text-green-400' : 'text-red-400'}`}>{formatNumber(ratio, 2)}x</td>;
-                  })}
-                </tr>
-                <tr>
-                  <td className="font-medium text-neutral-400">Effective APR</td>
-                  {scenarios.map(s => (
-                    <td key={s} className="font-mono">{formatPercent(runData.scenario_results[s]?.aggregated?.metrics?.effective_apr || 0)}</td>
-                  ))}
-                </tr>
-                <tr>
-                  <td className="font-medium text-neutral-400">Total Yield Paid</td>
-                  {scenarios.map(s => (
-                    <td key={s} className="font-mono">{formatUSD(runData.scenario_results[s]?.aggregated?.metrics?.total_yield_paid_usd || 0)}</td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          {(() => {
+            // Check if commercial fees are configured
+            const hasCommercial = scenarios.some(s => runData.scenario_results[s]?.commercial?.total_commercial_value_usd > 0);
+            
+            return (
+              <div className="border border-hearst-border rounded overflow-hidden">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Metric</th>
+                      {scenarios.map(s => (
+                        <th key={s} style={{ color: SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS] }}>
+                          {SCENARIO_LABELS[s] || s}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="font-medium text-neutral-400">Final Portfolio Value {hasCommercial && <span className="text-[10px] text-amber-400">(Net)</span>}</td>
+                      {scenarios.map(s => (
+                        <td key={s} className="font-mono">{formatUSD(runData.scenario_results[s]?.aggregated?.metrics?.final_portfolio_usd || 0)}</td>
+                      ))}
+                    </tr>
+                    {hasCommercial && (
+                      <tr className="bg-hearst-card/50">
+                        <td className="font-medium text-neutral-500">Final Portfolio Value <span className="text-[10px]">(Gross)</span></td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono text-neutral-500">{formatUSD(runData.scenario_results[s]?.aggregated?.metrics?.gross_final_portfolio_usd || 0)}</td>
+                        ))}
+                      </tr>
+                    )}
+                    <tr>
+                      <td className="font-medium text-neutral-400">Total Return {hasCommercial && <span className="text-[10px] text-amber-400">(Net)</span>}</td>
+                      {scenarios.map(s => {
+                        const pct = runData.scenario_results[s]?.aggregated?.metrics?.total_return_pct || 0;
+                        return <td key={s} className={`font-mono ${pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatPercent(pct)}</td>;
+                      })}
+                    </tr>
+                    {hasCommercial && (
+                      <tr className="bg-hearst-card/50">
+                        <td className="font-medium text-neutral-500">Total Return <span className="text-[10px]">(Gross)</span></td>
+                        {scenarios.map(s => {
+                          const pct = runData.scenario_results[s]?.aggregated?.metrics?.gross_total_return_pct || 0;
+                          return <td key={s} className={`font-mono text-neutral-500`}>{formatPercent(pct)}</td>;
+                        })}
+                      </tr>
+                    )}
+                    <tr>
+                      <td className="font-medium text-neutral-400">Capital Preservation</td>
+                      {scenarios.map(s => {
+                        const ratio = runData.scenario_results[s]?.aggregated?.metrics?.capital_preservation_ratio || 0;
+                        return <td key={s} className={`font-mono ${ratio >= 1 ? 'text-green-400' : 'text-red-400'}`}>{formatNumber(ratio, 2)}x</td>;
+                      })}
+                    </tr>
+                    <tr>
+                      <td className="font-medium text-neutral-400">Effective APR</td>
+                      {scenarios.map(s => (
+                        <td key={s} className="font-mono">{formatPercent(runData.scenario_results[s]?.aggregated?.metrics?.effective_apr || 0)}</td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td className="font-medium text-neutral-400">Total Yield Paid</td>
+                      {scenarios.map(s => (
+                        <td key={s} className="font-mono">{formatUSD(runData.scenario_results[s]?.aggregated?.metrics?.total_yield_paid_usd || 0)}</td>
+                      ))}
+                    </tr>
+                    {hasCommercial && (
+                      <tr className="bg-amber-900/10">
+                        <td className="font-medium text-amber-400">Commercial Fees (Total)</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono text-amber-400">{formatUSD(runData.scenario_results[s]?.commercial?.total_commercial_value_usd || 0)}</td>
+                        ))}
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
 
           {/* ═══════════ View Tabs ═══════════ */}
           <div className="flex gap-1 border-b border-hearst-border">
@@ -488,6 +522,482 @@ export default function ResultsPage() {
               </div>
             </div>
           )}
+
+          {/* ═══════════ BTC UNDER MANAGEMENT TAB ═══════════ */}
+          {viewTab === 'btc_mgmt' && (() => {
+            // BTC Under Management: All BTC held (holding bucket + mining capitalization)
+            // Shows how BTC value appreciates over time and when it gets sold
+            
+            const activeScenario = scenarios.includes(waterfallScenario) ? waterfallScenario : scenarios[0];
+            const btcMgmt: any[] = runData.scenario_results[activeScenario]?.aggregated?.btc_under_management || [];
+            const btcMgmtMetrics = runData.scenario_results[activeScenario]?.aggregated?.btc_under_management_metrics || {};
+            const holdingMetrics = runData.scenario_results[activeScenario]?.btc_holding_bucket?.metrics || {};
+            
+            // Find the strike month if any
+            const strikeMonth = btcMgmtMetrics.holding_strike_month;
+            
+            // Build chart data for BTC quantity over time
+            const btcQtyChartData = btcMgmt.map((m: any) => ({
+              month: m.month,
+              'Holding BTC': m.holding_btc,
+              'Mining Cap BTC': m.mining_cap_btc,
+              'Total BTC': m.total_btc,
+              'Strike Event': m.holding_strike_this_month ? m.total_btc : null,
+            }));
+            
+            // Build chart data for USD value over time
+            const btcValueChartData = btcMgmt.map((m: any) => ({
+              month: m.month,
+              'Holding Value': m.holding_value_usd,
+              'Mining Cap Value': m.mining_cap_value_usd,
+              'Total Value': m.total_value_usd,
+              'BTC Price': m.btc_price_usd,
+            }));
+            
+            // Build appreciation chart data
+            const appreciationChartData = btcMgmt.map((m: any) => ({
+              month: m.month,
+              'Appreciation ($)': m.holding_appreciation_usd,
+              'Appreciation (%)': m.holding_appreciation_pct,
+            }));
+
+            return (
+              <div className="space-y-5">
+                {/* Scenario Picker */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                  <div className="flex gap-1">
+                    {scenarios.map(s => (
+                      <button
+                        key={s}
+                        onClick={() => setWaterfallScenario(s)}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded transition-colors uppercase ${
+                          activeScenario === s
+                            ? 'bg-hearst-border text-white'
+                            : 'bg-hearst-card text-neutral-500 hover:text-neutral-300'
+                        }`}
+                        style={activeScenario === s ? { borderBottom: `2px solid ${SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS]}` } : undefined}
+                      >
+                        {SCENARIO_LABELS[s] || s}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-xs text-neutral-500">
+                    BTC held across all buckets appreciates in $ value as BTC price increases
+                  </div>
+                </div>
+
+                {/* Explainer Box */}
+                <div className="border border-hearst-border rounded p-4 bg-hearst-surface">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-2">How BTC Under Management Works</h3>
+                  <div className="text-[11px] text-neutral-500 space-y-1 leading-relaxed">
+                    <p>This view tracks all BTC held across the product, showing how its $ value appreciates over time:</p>
+                    <ol className="list-decimal list-inside space-y-0.5 pl-2">
+                      <li><span className="text-cyan-400 font-medium">BTC Holding Bucket</span> — BTC purchased for capital reconstitution (held until target price is struck)</li>
+                      <li><span className="text-amber-400 font-medium">Mining Capitalization</span> — Surplus BTC accumulated from mining after OPEX and yield</li>
+                    </ol>
+                    <p className="mt-2">
+                      When the target price is <span className="text-green-400 font-medium">struck</span>, BTC from the Holding bucket is sold for capital reconstitution.
+                      The remaining BTC (mining capitalization) continues to appreciate.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Key Metrics Summary */}
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="border border-cyan-500/30 rounded p-4 bg-cyan-950/10">
+                    <div className="text-[10px] text-neutral-500 uppercase mb-1">Total BTC Under Management</div>
+                    <div className="text-lg font-bold text-white">{formatBTC(btcMgmtMetrics.final_total_btc || 0)}</div>
+                    <div className="text-xs text-neutral-400">{formatUSD(btcMgmtMetrics.final_total_value_usd || 0)}</div>
+                  </div>
+                  <div className="border border-cyan-500/30 rounded p-4 bg-cyan-950/10">
+                    <div className="text-[10px] text-neutral-500 uppercase mb-1">Peak BTC Value</div>
+                    <div className="text-lg font-bold text-green-400">{formatUSD(btcMgmtMetrics.peak_btc_value_usd || 0)}</div>
+                    <div className="text-xs text-neutral-400">{formatBTC(btcMgmtMetrics.peak_btc_qty || 0)} BTC</div>
+                  </div>
+                  <div className="border border-cyan-500/30 rounded p-4 bg-cyan-950/10">
+                    <div className="text-[10px] text-neutral-500 uppercase mb-1">Holding Target</div>
+                    {btcMgmtMetrics.holding_target_struck ? (
+                      <>
+                        <div className="text-lg font-bold text-green-400">Struck</div>
+                        <div className="text-xs text-neutral-400">Month {btcMgmtMetrics.holding_strike_month} @ {formatUSD(btcMgmtMetrics.holding_strike_price_usd || 0)}</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-lg font-bold text-yellow-400">Pending</div>
+                        <div className="text-xs text-neutral-400">Target: {formatUSD(holdingMetrics.target_sell_price_usd || 0)}</div>
+                      </>
+                    )}
+                  </div>
+                  <div className="border border-amber-500/30 rounded p-4 bg-amber-950/10">
+                    <div className="text-[10px] text-neutral-500 uppercase mb-1">Mining BTC Accumulated</div>
+                    <div className="text-lg font-bold text-amber-400">{formatBTC(btcMgmtMetrics.mining_total_btc_accumulated || 0)}</div>
+                    <div className="text-xs text-neutral-400">From capitalization</div>
+                  </div>
+                </div>
+
+                {/* BTC Quantity Over Time */}
+                <div className="border border-hearst-border rounded p-4">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">BTC Quantity Under Management Over Time</h3>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <ComposedChart data={btcQtyChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
+                      <YAxis tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => v.toFixed(2)} label={{ value: 'BTC', angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: '#737373' } }} />
+                      <Tooltip
+                        contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }}
+                        formatter={(v: number, name: string) => [formatBTC(v), name]}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <Area type="monotone" dataKey="Holding BTC" stackId="1" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.3} name="Holding Bucket" />
+                      <Area type="monotone" dataKey="Mining Cap BTC" stackId="1" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.3} name="Mining Capitalization" />
+                      <Line type="monotone" dataKey="Total BTC" stroke="#ffffff" strokeWidth={1.5} strokeDasharray="4 2" dot={false} name="Total BTC" />
+                      {strikeMonth !== null && strikeMonth !== undefined && (
+                        <Line type="monotone" dataKey="Strike Event" stroke="#22c55e" strokeWidth={0} dot={{ r: 8, fill: '#22c55e', stroke: '#ffffff', strokeWidth: 2 }} name="Price Strike" />
+                      )}
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                  <p className="text-[10px] text-neutral-600 mt-1">
+                    Stacked areas show BTC held in each bucket. {strikeMonth !== null && strikeMonth !== undefined && <span className="text-green-400">Green dot marks when the holding target was struck and BTC sold.</span>}
+                  </p>
+                </div>
+
+                {/* USD Value Over Time (showing appreciation) */}
+                <div className="border border-hearst-border rounded p-4">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">$ Value Appreciation Over Time</h3>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <ComposedChart data={btcValueChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
+                      <YAxis yAxisId="usd" tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1_000_000).toFixed(1)}M`} />
+                      <YAxis yAxisId="price" orientation="right" tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip
+                        contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }}
+                        formatter={(v: number, name: string) => [name.includes('Price') ? formatUSD(v) : formatUSD(v), name]}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <Area yAxisId="usd" type="monotone" dataKey="Holding Value" stackId="1" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.3} name="Holding Value ($)" />
+                      <Area yAxisId="usd" type="monotone" dataKey="Mining Cap Value" stackId="1" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.3} name="Mining Cap Value ($)" />
+                      <Line yAxisId="price" type="monotone" dataKey="BTC Price" stroke="#a855f7" strokeWidth={1.5} strokeDasharray="4 2" dot={false} name="BTC Price (right axis)" />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                  <p className="text-[10px] text-neutral-600 mt-1">
+                    As BTC price (purple line) increases, the $ value of BTC held appreciates. This creates yield-generating capability beyond the initial investment.
+                  </p>
+                </div>
+
+                {/* Holding Bucket Appreciation */}
+                {holdingMetrics.btc_quantity > 0 && (
+                  <div className="border border-hearst-border rounded p-4">
+                    <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Holding Bucket Appreciation (vs Purchase Price)</h3>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <ComposedChart data={appreciationChartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                        <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
+                        <YAxis yAxisId="usd" tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
+                        <YAxis yAxisId="pct" orientation="right" tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `${v.toFixed(0)}%`} />
+                        <Tooltip
+                          contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }}
+                          formatter={(v: number, name: string) => [name.includes('%') ? `${v.toFixed(1)}%` : formatUSD(v), name]}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 10 }} />
+                        <Bar yAxisId="usd" dataKey="Appreciation ($)" fill="#22c55e" opacity={0.7} name="Unrealized Gain ($)" />
+                        <Line yAxisId="pct" type="monotone" dataKey="Appreciation (%)" stroke="#22c55e" strokeWidth={2} dot={false} name="Gain (%)" />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                    <p className="text-[10px] text-neutral-600 mt-1">
+                      Shows how much the holding bucket BTC has appreciated compared to the purchase price of {formatUSD(holdingMetrics.buying_price_usd || 0)}/BTC.
+                    </p>
+                  </div>
+                )}
+
+                {/* Monthly Detail Table */}
+                <div className="border border-hearst-border rounded overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 bg-hearst-card border-b border-hearst-border">
+                    <span className="text-xs font-medium text-neutral-400">Monthly BTC Under Management — {SCENARIO_LABELS[activeScenario] || activeScenario}</span>
+                    <div className="flex gap-2">
+                      <button
+                        className="text-[10px] text-neutral-500 hover:text-neutral-300 transition-colors"
+                        onClick={() => exportAsCSV(btcMgmt, `btc-under-management-${activeScenario}-${selectedRunId.slice(0, 8)}.csv`)}
+                      >
+                        Export CSV
+                      </button>
+                    </div>
+                  </div>
+                  <div className="overflow-auto" style={{ maxHeight: '400px' }}>
+                    <table className="data-table text-[11px]">
+                      <thead>
+                        <tr>
+                          <th className="sticky left-0 z-10 bg-hearst-card">Mo</th>
+                          <th>BTC Price</th>
+                          <th title="BTC in holding bucket (for capital reconstitution)">Holding BTC</th>
+                          <th title="USD value of holding bucket BTC">Holding $</th>
+                          <th title="BTC accumulated from mining capitalization">Mining BTC</th>
+                          <th title="USD value of mining capitalization">Mining $</th>
+                          <th title="Total BTC under management">Total BTC</th>
+                          <th title="Total USD value">Total $</th>
+                          <th title="Holding bucket status">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {btcMgmt.map((m: any) => {
+                          const isStrikeMonth = m.holding_strike_this_month;
+                          const isSold = m.holding_sold;
+                          const rowClass = isStrikeMonth ? 'bg-green-900/20' : '';
+                          return (
+                            <tr key={m.month} className={rowClass}>
+                              <td className={`sticky left-0 z-10 font-semibold ${isStrikeMonth ? 'bg-green-900/30' : 'bg-hearst-card'}`}>{m.month}</td>
+                              <td className="font-mono">{formatUSD(m.btc_price_usd)}</td>
+                              <td className="font-mono text-cyan-400">{formatBTC(m.holding_btc)}</td>
+                              <td className="font-mono">{formatUSD(m.holding_value_usd)}</td>
+                              <td className="font-mono text-amber-400">{formatBTC(m.mining_cap_btc)}</td>
+                              <td className="font-mono">{formatUSD(m.mining_cap_value_usd)}</td>
+                              <td className="font-mono text-white font-semibold">{formatBTC(m.total_btc)}</td>
+                              <td className="font-mono font-semibold">{formatUSD(m.total_value_usd)}</td>
+                              <td>
+                                {isStrikeMonth ? (
+                                  <span className="text-green-400 font-semibold">STRUCK</span>
+                                ) : isSold ? (
+                                  <span className="text-neutral-500">Sold</span>
+                                ) : (
+                                  <span className="text-cyan-400">Active</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="px-3 py-2 bg-hearst-card border-t border-hearst-border text-[10px] text-neutral-600">
+                    <span className="text-cyan-400">Holding BTC</span> = BTC for capital reconstitution &nbsp;|&nbsp;
+                    <span className="text-amber-400">Mining BTC</span> = Capitalization from mining surplus &nbsp;|&nbsp;
+                    <span className="text-green-400">STRUCK</span> = Target price hit, BTC sold
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ═══════════ COMMERCIAL TAB ═══════════ */}
+          {viewTab === 'commercial' && (() => {
+            // Check if any scenario has commercial data
+            const hasCommercial = scenarios.some(s => runData.scenario_results[s]?.commercial);
+            
+            if (!hasCommercial) {
+              return (
+                <div className="flex items-center justify-center h-64 text-sm text-neutral-600">
+                  No commercial fees configured for this simulation run.
+                </div>
+              );
+            }
+
+            // Build chart data for management fees over time
+            const mgmtFeesChartData = (() => {
+              const baseCommercial = runData.scenario_results[scenarios[0]]?.commercial;
+              if (!baseCommercial?.management_fees_monthly?.length) return [];
+              
+              return baseCommercial.management_fees_monthly.map((_: number, t: number) => {
+                const row: any = { month: t };
+                for (const s of scenarios) {
+                  const fees = runData.scenario_results[s]?.commercial?.management_fees_monthly || [];
+                  row[s] = fees[t] || 0;
+                }
+                return row;
+              });
+            })();
+
+            return (
+              <div className="space-y-6">
+                {/* Commercial Summary Cards */}
+                <div className="grid grid-cols-3 gap-4">
+                  {scenarios.map(s => {
+                    const comm = runData.scenario_results[s]?.commercial;
+                    const agg = runData.scenario_results[s]?.aggregated?.metrics;
+                    return (
+                      <div key={s} className="border border-amber-500/20 rounded p-4 bg-amber-950/10 space-y-4">
+                        <h4 className="text-xs font-semibold uppercase" style={{ color: SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS] }}>
+                          {SCENARIO_LABELS[s]}
+                        </h4>
+                        
+                        {comm ? (
+                          <>
+                            <div className="space-y-2">
+                              <MetricCard 
+                                label="Upfront Fee" 
+                                value={formatUSD(comm.upfront_fee_usd || 0)} 
+                                status={comm.upfront_fee_usd > 0 ? 'neutral' : 'green'}
+                              />
+                              <MetricCard 
+                                label="Management Fees (Total)" 
+                                value={formatUSD(comm.management_fees_total_usd || 0)} 
+                                status={comm.management_fees_total_usd > 0 ? 'neutral' : 'green'}
+                              />
+                              <MetricCard 
+                                label="Performance Fee" 
+                                value={formatUSD(comm.performance_fee_usd || 0)} 
+                                status={comm.performance_fee_usd > 0 ? 'neutral' : 'green'}
+                              />
+                              <div className="pt-2 border-t border-amber-500/20">
+                                <MetricCard 
+                                  label="Total Commercial Value" 
+                                  value={formatUSD(comm.total_commercial_value_usd || 0)} 
+                                  status="neutral"
+                                />
+                              </div>
+                            </div>
+                            
+                            {/* Impact on investor returns */}
+                            {agg && (
+                              <div className="pt-2 border-t border-amber-500/20 space-y-1">
+                                <p className="text-[10px] text-neutral-500 uppercase font-semibold">Impact on Investor Returns</p>
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                  <div>
+                                    <span className="text-neutral-500">Gross Return:</span>
+                                    <span className={`ml-1 font-mono ${(agg.gross_total_return_pct || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                      {formatPercent(agg.gross_total_return_pct || 0)}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-neutral-500">Net Return:</span>
+                                    <span className={`ml-1 font-mono ${(agg.total_return_pct || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                      {formatPercent(agg.total_return_pct || 0)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-xs text-neutral-600">No commercial fees</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Upfront Fee Breakdown */}
+                {(() => {
+                  const baseComm = runData.scenario_results[scenarios[0]]?.commercial;
+                  if (!baseComm || baseComm.upfront_fee_usd <= 0) return null;
+                  
+                  return (
+                    <div className="border border-hearst-border rounded p-4">
+                      <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Upfront Fee Allocation (Deducted from Buckets)</h3>
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="text-hearst-accent">Yield Bucket</span>
+                          <span className="font-mono">{formatUSD(baseComm.upfront_fee_breakdown?.yield_deduction_usd || 0)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-cyan-400">Holding Bucket</span>
+                          <span className="font-mono">{formatUSD(baseComm.upfront_fee_breakdown?.holding_deduction_usd || 0)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-lime-400">Mining Bucket</span>
+                          <span className="font-mono">{formatUSD(baseComm.upfront_fee_breakdown?.mining_deduction_usd || 0)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Management Fees Over Time Chart */}
+                {mgmtFeesChartData.length > 0 && (
+                  <div className="border border-hearst-border rounded p-4">
+                    <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Monthly Management Fees</h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={mgmtFeesChartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                        <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
+                        <YAxis tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
+                        <Tooltip 
+                          contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} 
+                          formatter={(v: number) => formatUSD(v)} 
+                        />
+                        <Legend wrapperStyle={{ fontSize: 10 }} />
+                        {scenarios.map(s => (
+                          <Bar key={s} dataKey={s} fill={SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS]} opacity={0.7} name={SCENARIO_LABELS[s]} />
+                        ))}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
+                {/* Performance Fee Details */}
+                {(() => {
+                  const hasPerformanceFee = scenarios.some(s => (runData.scenario_results[s]?.commercial?.performance_fee_usd || 0) > 0);
+                  if (!hasPerformanceFee) return null;
+                  
+                  return (
+                    <div className="border border-hearst-border rounded p-4">
+                      <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Performance Fee Calculation</h3>
+                      <p className="text-[10px] text-neutral-600 mb-4">Performance fee is calculated on the capitalization overhead (value above initial mining investment)</p>
+                      <div className="grid grid-cols-3 gap-4">
+                        {scenarios.map(s => {
+                          const comm = runData.scenario_results[s]?.commercial;
+                          return (
+                            <div key={s} className="space-y-1 text-xs">
+                              <span className="font-semibold" style={{ color: SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS] }}>
+                                {SCENARIO_LABELS[s]}
+                              </span>
+                              <div className="text-neutral-500">
+                                Overhead (Base): <span className="font-mono text-neutral-300">{formatUSD(comm?.performance_fee_base_usd || 0)}</span>
+                              </div>
+                              <div className="text-neutral-500">
+                                Performance Fee: <span className="font-mono text-amber-400">{formatUSD(comm?.performance_fee_usd || 0)}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Commercial Value Summary Table */}
+                <div className="border border-hearst-border rounded overflow-hidden">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Fee Type</th>
+                        {scenarios.map(s => (
+                          <th key={s} style={{ color: SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS] }}>
+                            {SCENARIO_LABELS[s] || s}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Upfront Commercial</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono">{formatUSD(runData.scenario_results[s]?.commercial?.upfront_fee_usd || 0)}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Management Fees</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono">{formatUSD(runData.scenario_results[s]?.commercial?.management_fees_total_usd || 0)}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Performance Fees</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono">{formatUSD(runData.scenario_results[s]?.commercial?.performance_fee_usd || 0)}</td>
+                        ))}
+                      </tr>
+                      <tr className="bg-amber-900/10">
+                        <td className="font-semibold text-amber-400">Total Commercial Value</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono font-semibold text-amber-400">{formatUSD(runData.scenario_results[s]?.commercial?.total_commercial_value_usd || 0)}</td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ═══════════ WATERFALL DETAIL TAB ═══════════ */}
           {viewTab === 'waterfall' && (() => {

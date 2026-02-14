@@ -25,7 +25,7 @@ export default function OpsPerformancePage() {
   const [selectedNetCurve, setSelectedNetCurve] = useState('');
   const [selectedMiner, setSelectedMiner] = useState('');
   const [assumedUptime, setAssumedUptime] = useState(0.95);
-  const [elecRate, setElecRate] = useState(0.05);
+  const [elecRate, setElecRate] = useState(0.065);
 
   const [calibResult, setCalibResult] = useState<any>(null);
   const [running, setRunning] = useState(false);

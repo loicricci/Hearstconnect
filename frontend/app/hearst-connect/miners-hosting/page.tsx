@@ -36,7 +36,7 @@ export default function MinersHostingPage() {
   const [networkCurves, setNetworkCurves] = useState<any[]>([]);
   const [selectedBTCCurve, setSelectedBTCCurve] = useState('');
   const [selectedNetCurve, setSelectedNetCurve] = useState('');
-  const [elecRate, setElecRate] = useState(0.05);
+  const [elecRate, setElecRate] = useState(0.065);
   const [uptime, setUptime] = useState(0.95);
   const [simMonths, setSimMonths] = useState(36);
   const [simResult, setSimResult] = useState<any>(null);
@@ -304,24 +304,20 @@ export default function MinersHostingPage() {
                 <div className="grid grid-cols-4 gap-3">
                   <MetricCard label="Total BTC Mined" value={formatBTC(simResult.total_btc_mined)} />
                   <MetricCard label="Total Revenue" value={formatUSD(simResult.total_revenue_usd)} status="green" />
-                  <MetricCard label="Total Elec Cost" value={formatUSD(simResult.total_electricity_cost_usd)} status="yellow" />
-                  <MetricCard
-                    label="Break-Even"
-                    value={simResult.break_even_month !== null ? `Month ${simResult.break_even_month}` : 'N/A'}
-                    status={simResult.break_even_month !== null ? 'green' : 'red'}
-                  />
+                  <MetricCard label="Total Net (OpEx)" value={formatUSD(simResult.total_net_usd)} status={simResult.total_net_usd >= 0 ? 'green' : 'red'} />
+                  <MetricCard label="Total EBIT" value={formatUSD(simResult.total_ebit_usd)} status={simResult.total_ebit_usd >= 0 ? 'green' : 'red'} />
                 </div>
 
                 <div className="border border-hearst-border rounded p-4">
-                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Cumulative Net USD</h3>
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Cumulative Performance</h3>
                   <ResponsiveContainer width="100%" height={250}>
                     <LineChart data={simResult.monthly_cashflows}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
                       <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
                       <YAxis tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
                       <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} />
-                      <Line type="monotone" dataKey="cumulative_net_usd" stroke="#4ade80" strokeWidth={1.5} dot={false} name="Cumulative Net USD" />
-                      <Line type="monotone" dataKey="net_usd" stroke="#22c55e" strokeWidth={1} dot={false} name="Monthly Net USD" />
+                      <Line type="monotone" dataKey="cumulative_net_usd" stroke="#4ade80" strokeWidth={1.5} dot={false} name="Cumulative Net (OpEx)" />
+                      <Line type="monotone" dataKey="cumulative_ebit_usd" stroke="#f59e0b" strokeWidth={1.5} dot={false} name="Cumulative EBIT" />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -335,8 +331,9 @@ export default function MinersHostingPage() {
                     { key: 'gross_revenue_usd', label: 'Revenue', format: (v: number) => formatUSD(v) },
                     { key: 'elec_cost_usd', label: 'Elec Cost', format: (v: number) => formatUSD(v) },
                     { key: 'maintenance_usd', label: 'Maint.', format: (v: number) => formatUSD(v) },
-                    { key: 'depreciation_usd', label: 'Depr.', format: (v: number) => formatUSD(v) },
                     { key: 'net_usd', label: 'Net USD', format: (v: number) => formatUSD(v) },
+                    { key: 'depreciation_usd', label: 'Depr.', format: (v: number) => formatUSD(v) },
+                    { key: 'ebit_usd', label: 'EBIT', format: (v: number) => formatUSD(v) },
                   ]}
                   rows={simResult.monthly_cashflows}
                   exportName={`miner-sim-${simResult.id}`}

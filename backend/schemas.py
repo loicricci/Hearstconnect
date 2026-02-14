@@ -27,7 +27,6 @@ class BTCPriceCurveRequest(BaseModel):
     mode: str = "deterministic"  # "deterministic" | "ml_forecast"
 
     # ── Common ──
-    start_date: str = "2025-01"
     months: int = 120
 
     # ── Deterministic mode params ──
@@ -59,7 +58,6 @@ class BTCPriceCurveResponse(BaseModel):
     id: str
     name: str
     scenario: str
-    start_date: str
     months: int
     monthly_prices: List[float]
     # ML-specific (optional, present only in ml_forecast mode)
@@ -80,9 +78,14 @@ class NetworkCurveRequest(BaseModel):
     mode: str = "deterministic"  # "deterministic" | "ml_forecast"
 
     # ── Common ──
-    start_date: str = "2025-01"
     months: int = 120
     halving_enabled: bool = True
+    months_to_next_halving: int = Field(
+        default=26,
+        ge=0,
+        description="Month offset when the next Bitcoin halving occurs (subsidy halves). "
+                    "Default 26 ≈ distance to April 2028 halving. Subsequent halvings every 48 months."
+    )
 
     # ── Deterministic mode params ──
     starting_difficulty: float = 110e12  # ~110T
@@ -108,7 +111,6 @@ class NetworkCurveResponse(BaseModel):
     id: str
     name: str
     scenario: str
-    start_date: str
     months: int
     difficulty: List[float]
     hashprice_btc_per_ph_day: List[float]
@@ -174,6 +176,7 @@ class MinerSimResponse(BaseModel):
     total_revenue_usd: float
     total_electricity_cost_usd: float
     total_net_usd: float
+    total_ebit_usd: float
     break_even_month: Optional[int]
     created_at: datetime
 
@@ -245,16 +248,57 @@ class TakeProfitEntry(BaseModel):
     sell_pct: float
 
 
+# ──────────────────────────────────────────────────────────
+# Commercial Fees Configuration
+# ──────────────────────────────────────────────────────────
+class CommercialConfig(BaseModel):
+    """Commercial fee structure for the product."""
+    upfront_commercial_pct: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=100.0,
+        description="Upfront commercial fee as % of total investment. Removed proportionally from all buckets at inception."
+    )
+    management_fees_pct: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=10.0,
+        description="Annual management fee as % of dollar value investment. Captured from capitalization monthly."
+    )
+    performance_fees_pct: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=50.0,
+        description="Performance fee as % of overhead value (capitalization above threshold). Only captured if overhead is delivered."
+    )
+
+
 class YieldBucketConfig(BaseModel):
     allocated_usd: float
-    base_apr: float = 0.08  # 8%
+    base_apr: float = 0.04  # 4%
     apr_schedule: Optional[List[dict]] = None  # [{from_month, to_month, apr}]
+
+
+class ExtraYieldStrikeEntry(BaseModel):
+    """Strike price entry for extra yield ladder."""
+    strike_price: float
+    btc_share_pct: float  # % of extra yield BTC to sell at this strike
 
 
 class BtcHoldingBucketConfig(BaseModel):
     allocated_usd: float
     buying_price_usd: float
     target_sell_price_usd: Optional[float] = None  # Auto-computed: covers holding + mining initial investment
+    capital_recon_pct: float = Field(
+        default=100.0,
+        ge=0.0,
+        le=100.0,
+        description="% of BTC allocated to capital reconstitution (rest goes to extra yield)"
+    )
+    extra_yield_strikes: List[ExtraYieldStrikeEntry] = Field(
+        default=[],
+        description="Strike price ladder for extra yield portion of BTC"
+    )
 
 
 class MiningBucketConfig(BaseModel):
@@ -277,6 +321,9 @@ class ProductConfigRequest(BaseModel):
     btc_holding_bucket: BtcHoldingBucketConfig
     mining_bucket: MiningBucketConfig
 
+    # Commercial fees configuration
+    commercial: Optional[CommercialConfig] = None
+
     # 3 scenario curve IDs
     btc_price_curve_ids: Dict[str, str]  # {"bear": id, "base": id, "bull": id}
     network_curve_ids: Dict[str, str]    # {"bear": id, "base": id, "bull": id}
@@ -284,10 +331,22 @@ class ProductConfigRequest(BaseModel):
     user: UserContext = UserContext()
 
 
+class CommercialResults(BaseModel):
+    """Commercial fees results for a scenario."""
+    upfront_fee_usd: float = 0.0
+    upfront_fee_breakdown: Dict[str, float] = {}  # per-bucket deductions
+    management_fees_monthly: List[float] = []
+    management_fees_total_usd: float = 0.0
+    performance_fee_usd: float = 0.0
+    performance_fee_base_usd: float = 0.0  # The overhead value the fee was calculated on
+    total_commercial_value_usd: float = 0.0
+
+
 class ScenarioBucketResults(BaseModel):
     yield_bucket: dict
     btc_holding_bucket: dict
     mining_bucket: dict
+    commercial: Optional[CommercialResults] = None
     aggregated: dict
 
 

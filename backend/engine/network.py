@@ -6,17 +6,11 @@ from typing import Dict, List, Tuple
 logger = logging.getLogger(__name__)
 
 
-# BTC subsidy schedule (block reward halvings)
-# Halving occurs every 210,000 blocks (~4 years)
-# 2024-04: halving to 3.125 BTC
-# 2028-04: halving to 1.5625 BTC
-# 2032-04: halving to 0.78125 BTC
-HALVING_SCHEDULE = [
-    ("2024-04", 3.125),
-    ("2028-04", 1.5625),
-    ("2032-04", 0.78125),
-    ("2036-04", 0.390625),
-]
+# Current block subsidy (post-April 2024 halving)
+CURRENT_SUBSIDY_BTC = 3.125
+
+# Halving interval in months (~4 years = 48 months)
+HALVING_INTERVAL_MONTHS = 48
 
 BLOCKS_PER_DAY = 144.0
 DAYS_PER_MONTH = 30.44  # average
@@ -29,36 +23,48 @@ FEE_REGIMES = {
 }
 
 
-def get_subsidy_for_month(start_date: str, month_index: int, halving_enabled: bool) -> float:
-    """Get the block subsidy (BTC) for a given month."""
+def get_subsidy_for_month(
+    month_index: int,
+    halving_enabled: bool,
+    months_to_next_halving: int = 26,
+) -> float:
+    """
+    Get the block subsidy (BTC) for a given month using month-relative indexing.
+
+    Args:
+        month_index: The simulation month (0-based).
+        halving_enabled: Whether to apply halving schedule.
+        months_to_next_halving: Month offset when the first halving occurs.
+            Subsequent halvings every 48 months after that.
+
+    Returns:
+        Block subsidy in BTC.
+    """
     if not halving_enabled:
-        return 3.125  # Current subsidy as of 2024
+        return CURRENT_SUBSIDY_BTC
 
-    start_year = int(start_date[:4])
-    start_month = int(start_date[5:7])
-
-    current_year = start_year + (start_month - 1 + month_index) // 12
-    current_month = (start_month - 1 + month_index) % 12 + 1
-    current_date_str = f"{current_year:04d}-{current_month:02d}"
-
-    subsidy = 3.125  # Default (post-2024 halving)
-    for halving_date, new_subsidy in HALVING_SCHEDULE:
-        if current_date_str >= halving_date:
-            subsidy = new_subsidy
+    subsidy = CURRENT_SUBSIDY_BTC
+    # Count how many halvings have occurred by this month
+    if month_index >= months_to_next_halving:
+        halvings = 1 + (month_index - months_to_next_halving) // HALVING_INTERVAL_MONTHS
+        subsidy = CURRENT_SUBSIDY_BTC / (2 ** halvings)
     return subsidy
 
 
 def generate_network_curve(
-    start_date: str,
     months: int,
     starting_network_hashrate_eh: float,
     monthly_difficulty_growth_rate: float,
     halving_enabled: bool,
     fee_regime: str,
     starting_fees_per_block_btc: float,
+    months_to_next_halving: int = 26,
 ) -> Tuple[List[float], List[float], List[float], List[float], List[str]]:
     """
     Generate deterministic network curves.
+
+    All months are relative (Month 0, 1, 2, ...) — no calendar dates.
+    Halving is specified as a month offset from simulation start.
 
     Returns:
         (difficulty[], hashprice_btc_per_ph_day[], fees_per_block_btc[], network_hashrate_eh[], warnings[])
@@ -82,8 +88,8 @@ def generate_network_curve(
         hashrate_th = hashrate_eh * 1e6  # EH/s -> TH/s
         difficulty = hashrate_th * (2**32) / 600.0
 
-        # Block subsidy
-        subsidy = get_subsidy_for_month(start_date, m, halving_enabled)
+        # Block subsidy (month-relative halving)
+        subsidy = get_subsidy_for_month(m, halving_enabled, months_to_next_halving)
 
         # Fees per block
         fees_btc = starting_fees_per_block_btc * fee_mult
@@ -115,17 +121,16 @@ def generate_network_curve(
 
     # Halving warnings
     if halving_enabled:
-        for halving_date, new_subsidy in HALVING_SCHEDULE:
-            h_year = int(halving_date[:4])
-            h_month = int(halving_date[5:7])
-            s_year = int(start_date[:4])
-            s_month = int(start_date[5:7])
-            halving_month_idx = (h_year - s_year) * 12 + (h_month - s_month)
-            if 0 <= halving_month_idx < months:
-                warnings.append(
-                    f"Halving at month {halving_month_idx} ({halving_date}): "
-                    f"subsidy drops to {new_subsidy} BTC"
-                )
+        halving_month = months_to_next_halving
+        halving_num = 0
+        while halving_month < months:
+            new_subsidy = CURRENT_SUBSIDY_BTC / (2 ** (halving_num + 1))
+            warnings.append(
+                f"Halving at month {halving_month}: "
+                f"subsidy drops to {new_subsidy} BTC"
+            )
+            halving_num += 1
+            halving_month += HALVING_INTERVAL_MONTHS
 
     return difficulty_curve, hashprice_curve, fees_curve, hashrate_curve, warnings
 
@@ -139,7 +144,7 @@ def generate_network_curve_ml(
     forecast_months: int = 120,
     confidence: float = 0.95,
     halving_enabled: bool = True,
-    start_date: str = "2025-01",
+    months_to_next_halving: int = 26,
 ) -> Dict:
     """
     Generate network curves using ML time-series forecasting.
@@ -152,7 +157,7 @@ def generate_network_curve_ml(
         forecast_months: Number of months to forecast.
         confidence: Confidence interval (0.80, 0.90, 0.95).
         halving_enabled: Apply Bitcoin halving schedule to hashprice calc.
-        start_date: Start date (YYYY-MM) for subsidy schedule alignment.
+        months_to_next_halving: Month offset for next halving.
 
     Returns:
         Dict with keys:
@@ -212,7 +217,7 @@ def generate_network_curve_ml(
     hp_upper = []
 
     for m in range(forecast_months):
-        subsidy = get_subsidy_for_month(start_date, m, halving_enabled)
+        subsidy = get_subsidy_for_month(m, halving_enabled, months_to_next_halving)
 
         # Central forecast
         total_btc = subsidy + float(fee_forecast[m])
@@ -234,17 +239,16 @@ def generate_network_curve_ml(
 
     # 6. Halving warnings
     if halving_enabled:
-        for halving_date, new_subsidy in HALVING_SCHEDULE:
-            h_year = int(halving_date[:4])
-            h_month = int(halving_date[5:7])
-            s_year = int(start_date[:4])
-            s_month = int(start_date[5:7])
-            halving_month_idx = (h_year - s_year) * 12 + (h_month - s_month)
-            if 0 <= halving_month_idx < forecast_months:
-                warnings.append(
-                    f"Halving at month {halving_month_idx} ({halving_date}): "
-                    f"subsidy drops to {new_subsidy} BTC"
-                )
+        halving_month = months_to_next_halving
+        halving_num = 0
+        while halving_month < forecast_months:
+            new_subsidy = CURRENT_SUBSIDY_BTC / (2 ** (halving_num + 1))
+            warnings.append(
+                f"Halving at month {halving_month}: "
+                f"subsidy drops to {new_subsidy} BTC"
+            )
+            halving_num += 1
+            halving_month += HALVING_INTERVAL_MONTHS
 
     # 7. Compile model_info
     model_info = {

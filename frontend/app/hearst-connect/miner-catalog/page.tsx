@@ -30,7 +30,7 @@ export default function MinerCatalogPage() {
   const [networkCurves, setNetworkCurves] = useState<any[]>([]);
   const [selectedBTCCurve, setSelectedBTCCurve] = useState('');
   const [selectedNetCurve, setSelectedNetCurve] = useState('');
-  const [elecRate, setElecRate] = useState(0.05);
+  const [elecRate, setElecRate] = useState(0.065);
   const [uptime, setUptime] = useState(0.95);
   const [simMonths, setSimMonths] = useState(36);
 

@@ -140,6 +140,7 @@ def simulate(req: MinerSimRequest, db: Session = Depends(get_db),
         total_revenue_usd=results["total_revenue_usd"],
         total_electricity_cost_usd=results["total_electricity_cost_usd"],
         total_net_usd=results["total_net_usd"],
+        total_ebit_usd=results["total_ebit_usd"],
         break_even_month=results["break_even_month"],
         created_at=run.created_at,
     )

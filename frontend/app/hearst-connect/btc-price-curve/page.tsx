@@ -100,7 +100,6 @@ export default function BTCPriceCurvePage() {
   }, [savedCurves, selectedCurveId, fetchSavedCurves]);
 
   const [scenario, setScenario] = useState('base');
-  const [startDate, setStartDate] = useState('2025-01');
   const [mode, setMode] = useState<'deterministic' | 'ml_forecast'>('deterministic');
 
   // ── Live BTC price state ──
@@ -159,7 +158,6 @@ export default function BTCPriceCurvePage() {
       const payload: any = {
         name: name.trim(),
         scenario,
-        start_date: startDate,
         months: 120,
         mode,
       };
@@ -342,7 +340,6 @@ export default function BTCPriceCurvePage() {
                 { value: 'bull', label: 'Bull' },
               ]}
             />
-            <InputField label="Start Date" value={startDate} onChange={setStartDate} hint="YYYY-MM" />
           </div>
 
           {/* Deterministic Inputs */}

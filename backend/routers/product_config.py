@@ -154,6 +154,15 @@ def simulate_product(req: ProductConfigRequest):
         else:
             target_sell_price = buying_price  # fallback
 
+        # Extract commercial fee configuration
+        upfront_commercial_pct = 0.0
+        management_fees_pct = 0.0
+        performance_fees_pct = 0.0
+        if req.commercial:
+            upfront_commercial_pct = req.commercial.upfront_commercial_pct
+            management_fees_pct = req.commercial.management_fees_pct
+            performance_fees_pct = req.commercial.performance_fees_pct
+
         # Run simulation across all scenarios
         scenario_results = simulate_all_scenarios(
             scenario_curves=scenario_curves,
@@ -163,10 +172,12 @@ def simulate_product(req: ProductConfigRequest):
             yield_allocated_usd=req.yield_bucket.allocated_usd,
             yield_base_apr=req.yield_bucket.base_apr,
             yield_apr_schedule=req.yield_bucket.apr_schedule,
-            # BTC holding bucket (principal reconstitution)
+            # BTC holding bucket (principal reconstitution + extra yield)
             holding_allocated_usd=req.btc_holding_bucket.allocated_usd,
             holding_buying_price=req.btc_holding_bucket.buying_price_usd,
             holding_target_sell_price=target_sell_price,
+            holding_capital_recon_pct=req.btc_holding_bucket.capital_recon_pct,
+            holding_extra_yield_strikes=[s.model_dump() for s in req.btc_holding_bucket.extra_yield_strikes],
             # Mining bucket (yield + capitalization)
             mining_allocated_usd=req.mining_bucket.allocated_usd,
             miner_hashrate_th=miner.hashrate_th,
@@ -181,6 +192,10 @@ def simulate_product(req: ProductConfigRequest):
             mining_base_yield_apr=req.mining_bucket.base_yield_apr,
             mining_bonus_yield_apr=req.mining_bucket.bonus_yield_apr,
             mining_take_profit_ladder=[tp.model_dump() for tp in req.mining_bucket.take_profit_ladder],
+            # Commercial fees
+            upfront_commercial_pct=upfront_commercial_pct,
+            management_fees_pct=management_fees_pct,
+            performance_fees_pct=performance_fees_pct,
         )
 
         # Save run

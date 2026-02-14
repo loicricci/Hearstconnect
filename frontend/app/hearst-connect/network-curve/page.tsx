@@ -93,8 +93,8 @@ export default function NetworkCurvePage() {
   }, [savedCurves, selectedCurveId, fetchSavedCurves]);
 
   const [scenario, setScenario] = useState('base');
-  const [startDate, setStartDate] = useState('2025-01');
   const [halvingEnabled, setHalvingEnabled] = useState(true);
+  const [monthsToNextHalving, setMonthsToNextHalving] = useState(26);
   const [mode, setMode] = useState<'deterministic' | 'ml_forecast'>('deterministic');
 
   // ── Deterministic mode state ──
@@ -124,9 +124,9 @@ export default function NetworkCurvePage() {
       const payload: any = {
         name: name.trim(),
         scenario,
-        start_date: startDate,
         months: 120,
         halving_enabled: halvingEnabled,
+        months_to_next_halving: monthsToNextHalving,
         mode,
       };
 
@@ -316,7 +316,6 @@ export default function NetworkCurvePage() {
                 { value: 'bull', label: 'Bull' },
               ]}
             />
-            <InputField label="Start Date" value={startDate} onChange={setStartDate} hint="YYYY-MM" />
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -326,6 +325,17 @@ export default function NetworkCurvePage() {
               />
               <label className="text-xs text-neutral-400">Halving Schedule Awareness</label>
             </div>
+            {halvingEnabled && (
+              <InputField
+                label="Months to Next Halving"
+                value={monthsToNextHalving}
+                onChange={v => setMonthsToNextHalving(Number(v))}
+                type="number"
+                min={0}
+                max={120}
+                hint="Month offset when next BTC halving occurs (subsequent halvings every 48 months)"
+              />
+            )}
           </div>
 
           {/* Deterministic Inputs */}

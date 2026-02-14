@@ -10,6 +10,11 @@ def generate_uuid() -> str:
     return str(uuid.uuid4())
 
 
+def _current_month() -> str:
+    """Return current month as YYYY-MM string."""
+    return datetime.utcnow().strftime("%Y-%m")
+
+
 # ──────────────────────────────────────────────────────────
 # PAGE 1 — BTC Price Curve
 # ──────────────────────────────────────────────────────────
@@ -19,7 +24,7 @@ class BTCPriceCurve(SQLModel, table=True):
     id: str = Field(default_factory=generate_uuid, primary_key=True)
     name: str = Field(index=True)
     scenario: str = Field(default="base")  # bear / base / bull
-    start_date: str = Field(default="2025-01")  # YYYY-MM
+    start_date: str = Field(default_factory=_current_month)  # YYYY-MM
     months: int = Field(default=120)
     monthly_prices: List[float] = Field(default=[], sa_column=Column(JSON))
     anchor_points: dict = Field(default={}, sa_column=Column(JSON))
@@ -40,7 +45,7 @@ class NetworkCurve(SQLModel, table=True):
     id: str = Field(default_factory=generate_uuid, primary_key=True)
     name: str = Field(index=True)
     scenario: str = Field(default="base")
-    start_date: str = Field(default="2025-01")
+    start_date: str = Field(default_factory=_current_month)  # YYYY-MM
     months: int = Field(default=120)
     difficulty: List[float] = Field(default=[], sa_column=Column(JSON))
     hashprice_btc_per_ph_day: List[float] = Field(default=[], sa_column=Column(JSON))

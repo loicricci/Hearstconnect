@@ -32,7 +32,7 @@ def generate_curve(req: NetworkCurveRequest, db: Session = Depends(get_db),
                 forecast_months=req.months,
                 confidence=req.confidence_interval,
                 halving_enabled=req.halving_enabled,
-                start_date=req.start_date,
+                months_to_next_halving=req.months_to_next_halving,
             )
         except (RuntimeError, ValueError) as e:
             raise HTTPException(status_code=422, detail=str(e))
@@ -65,13 +65,13 @@ def generate_curve(req: NetworkCurveRequest, db: Session = Depends(get_db),
     else:
         # ── Deterministic Mode (existing) ──
         difficulty, hashprice, fees, hashrate, warnings = generate_network_curve(
-            start_date=req.start_date,
             months=req.months,
             starting_network_hashrate_eh=req.starting_network_hashrate_eh,
             monthly_difficulty_growth_rate=req.monthly_difficulty_growth_rate,
             halving_enabled=req.halving_enabled,
             fee_regime=req.fee_regime,
             starting_fees_per_block_btc=req.starting_fees_per_block_btc,
+            months_to_next_halving=req.months_to_next_halving,
         )
 
         # Deterministic confidence band (bull / bear envelope)
@@ -106,7 +106,6 @@ def generate_curve(req: NetworkCurveRequest, db: Session = Depends(get_db),
     curve = NetworkCurve(
         name=req.name,
         scenario=req.scenario,
-        start_date=req.start_date,
         months=req.months,
         difficulty=difficulty,
         hashprice_btc_per_ph_day=hashprice,
@@ -123,7 +122,7 @@ def generate_curve(req: NetworkCurveRequest, db: Session = Depends(get_db),
 
     return NetworkCurveResponse(
         id=curve.id, name=curve.name, scenario=curve.scenario,
-        start_date=curve.start_date, months=curve.months,
+        months=curve.months,
         difficulty=curve.difficulty, hashprice_btc_per_ph_day=curve.hashprice_btc_per_ph_day,
         fees_per_block_btc=curve.fees_per_block_btc, network_hashrate_eh=curve.network_hashrate_eh,
         warnings=curve.warnings,
@@ -141,7 +140,7 @@ def list_curves(db: Session = Depends(get_db), user: dict = Depends(get_current_
     return [
         NetworkCurveResponse(
             id=c.id, name=c.name, scenario=c.scenario,
-            start_date=c.start_date, months=c.months,
+            months=c.months,
             difficulty=c.difficulty, hashprice_btc_per_ph_day=c.hashprice_btc_per_ph_day,
             fees_per_block_btc=c.fees_per_block_btc, network_hashrate_eh=c.network_hashrate_eh,
             warnings=c.warnings,
@@ -205,7 +204,7 @@ def get_curve(curve_id: str, db: Session = Depends(get_db), user: dict = Depends
 
     return NetworkCurveResponse(
         id=curve.id, name=curve.name, scenario=curve.scenario,
-        start_date=curve.start_date, months=curve.months,
+        months=curve.months,
         difficulty=curve.difficulty, hashprice_btc_per_ph_day=curve.hashprice_btc_per_ph_day,
         fees_per_block_btc=curve.fees_per_block_btc, network_hashrate_eh=curve.network_hashrate_eh,
         warnings=curve.warnings,

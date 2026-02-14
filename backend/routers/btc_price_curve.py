@@ -68,7 +68,6 @@ def generate_curve(req: BTCPriceCurveRequest, db: Session = Depends(get_db),
     curve = BTCPriceCurve(
         name=req.name,
         scenario=req.scenario,
-        start_date=req.start_date,
         months=req.months,
         monthly_prices=monthly_prices,
         anchor_points={str(k): v for k, v in req.anchor_points.items()},
@@ -87,7 +86,6 @@ def generate_curve(req: BTCPriceCurveRequest, db: Session = Depends(get_db),
         id=curve.id,
         name=curve.name,
         scenario=curve.scenario,
-        start_date=curve.start_date,
         months=curve.months,
         monthly_prices=curve.monthly_prices,
         upper_bound=upper_bound,
@@ -105,7 +103,7 @@ def list_curves(db: Session = Depends(get_db), user: dict = Depends(get_current_
     curves = db.query(BTCPriceCurve).order_by(BTCPriceCurve.created_at.desc()).limit(50).all()
     return [
         BTCPriceCurveResponse(
-            id=c.id, name=c.name, scenario=c.scenario, start_date=c.start_date,
+            id=c.id, name=c.name, scenario=c.scenario,
             months=c.months, monthly_prices=c.monthly_prices,
             mode=c.input_snapshot.get("mode", "deterministic") if c.input_snapshot else "deterministic",
             created_by=c.created_by, created_at=c.created_at,
@@ -152,7 +150,7 @@ def get_curve(curve_id: str, db: Session = Depends(get_db), user: dict = Depends
         model_info = snap.get("_computed_model_info")
 
     return BTCPriceCurveResponse(
-        id=curve.id, name=curve.name, scenario=curve.scenario, start_date=curve.start_date,
+        id=curve.id, name=curve.name, scenario=curve.scenario,
         months=curve.months, monthly_prices=curve.monthly_prices,
         upper_bound=upper_bound,
         lower_bound=lower_bound,

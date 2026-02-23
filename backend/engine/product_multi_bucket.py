@@ -18,7 +18,7 @@ Commercial fees:
 Then runs all three buckets across bear/base/bull scenarios.
 """
 from typing import List, Dict, Optional
-from .product_waterfall import simulate_product_3y
+from .product_waterfall import simulate_product_3y, _make_decision
 
 
 # ──────────────────────────────────────────────────────────
@@ -389,6 +389,7 @@ def simulate_single_scenario(
     upfront_commercial_pct: float = 0.0,
     management_fees_pct: float = 0.0,
     performance_fees_pct: float = 0.0,
+    early_close_threshold_pct: float = 0.36,
 ) -> Dict:
     """Run all three buckets for a single price scenario and aggregate.
 
@@ -546,6 +547,70 @@ def simulate_single_scenario(
             "total_portfolio_usd": round(total, 2),
         })
 
+    # ────────────────────────────────────────────────────────
+    # Early Close & Quarterly Yield Aggregation
+    # ────────────────────────────────────────────────────────
+    cumulative_total_yield = 0.0
+    monthly_cumulative_yield: List[float] = []
+    for t in range(sim_months):
+        y_yield = (yield_result["monthly_data"][t]["monthly_yield_usd"]
+                   if t < len(yield_result["monthly_data"]) else 0)
+        m_yield = (mining_result["monthly_waterfall"][t].get("yield_paid_usd", 0)
+                   if t < len(mining_result["monthly_waterfall"]) else 0)
+        cumulative_total_yield += y_yield + m_yield
+        monthly_cumulative_yield.append(cumulative_total_yield)
+
+    quarterly_yield_data: List[Dict] = []
+    early_close_month: Optional[int] = None
+
+    for q_start in range(0, sim_months, 3):
+        q_end = min(q_start + 3, sim_months)
+        quarter_num = q_start // 3 + 1
+        q_months = list(range(q_start, q_end))
+
+        q_yield = sum(
+            (yield_result["monthly_data"][t]["monthly_yield_usd"]
+             if t < len(yield_result["monthly_data"]) else 0) +
+            (mining_result["monthly_waterfall"][t].get("yield_paid_usd", 0)
+             if t < len(mining_result["monthly_waterfall"]) else 0)
+            for t in q_months
+        )
+
+        cum_yield = monthly_cumulative_yield[q_end - 1]
+        cum_yield_pct = cum_yield / capital_raised_usd if capital_raised_usd > 0 else 0
+
+        quarterly_yield_data.append({
+            "quarter": quarter_num,
+            "months": q_months,
+            "yield_usd": round(q_yield, 2),
+            "cumulative_yield_usd": round(cum_yield, 2),
+            "cumulative_yield_pct": round(cum_yield_pct, 4),
+        })
+
+        if (early_close_threshold_pct > 0
+                and cum_yield_pct >= early_close_threshold_pct
+                and early_close_month is None):
+            early_close_month = q_end - 1
+
+    effective_months = (early_close_month + 1) if early_close_month is not None else sim_months
+
+    if early_close_month is not None:
+        monthly_portfolio = monthly_portfolio[:effective_months]
+        btc_under_management = btc_under_management[:effective_months]
+        capitalization_monthly_usd = capitalization_monthly_usd[:effective_months]
+        close_quarter = (early_close_month // 3) + 1
+        quarterly_yield_data = quarterly_yield_data[:close_quarter]
+
+    early_close_info = {
+        "triggered": early_close_month is not None,
+        "close_month": early_close_month,
+        "close_quarter": ((early_close_month // 3) + 1) if early_close_month is not None else None,
+        "cumulative_yield_at_close_pct": round(
+            monthly_cumulative_yield[early_close_month] / capital_raised_usd, 4
+        ) if early_close_month is not None and capital_raised_usd > 0 else 0.0,
+        "target_pct": early_close_threshold_pct,
+    }
+
     # Calculate commercial fees
     commercial_result = None
     has_commercial = upfront_commercial_pct > 0 or management_fees_pct > 0 or performance_fees_pct > 0
@@ -563,46 +628,65 @@ def simulate_single_scenario(
             mining_allocated=original_mining_alloc,
         )
 
-    # Aggregated metrics
-    final_yield = yield_result["metrics"]["final_value_usd"]
-    final_holding = holding_result["metrics"]["final_value_usd"]
-
-    # Mining final value = capitalization
+    # Aggregated metrics (use effective month values for early close)
     mining_metrics = mining_result["metrics"]
-    final_mining = mining_metrics.get("capitalization_usd_final", 0)
+
+    if early_close_month is not None:
+        eff_t = early_close_month
+        final_yield = (yield_result["monthly_data"][eff_t]["bucket_value_usd"]
+                       if eff_t < len(yield_result["monthly_data"]) else 0)
+        final_holding = (holding_result["monthly_data"][eff_t]["bucket_value_usd"]
+                         if eff_t < len(holding_result["monthly_data"]) else 0)
+        final_mining = (mining_result["monthly_waterfall"][eff_t].get("capitalization_usd", 0)
+                        if eff_t < len(mining_result["monthly_waterfall"]) else 0)
+    else:
+        final_yield = yield_result["metrics"]["final_value_usd"]
+        final_holding = holding_result["metrics"]["final_value_usd"]
+        final_mining = mining_metrics.get("capitalization_usd_final", 0)
 
     # Gross portfolio value (before commercial fees)
     gross_final = final_yield + final_holding + final_mining
-    
+
     # Net portfolio value for investors (after commercial fees deducted)
-    # Management fees reduce capitalization, performance fees reduce final value
     commercial_deductions = 0.0
     if commercial_result:
-        # Management fees are already conceptually captured from capitalization
-        # Performance fees reduce final investor returns
         commercial_deductions = (
             commercial_result.get("management_fees_total_usd", 0) +
             commercial_result.get("performance_fee_usd", 0)
         )
-    
+
     # Net portfolio = gross - ongoing fees (upfront already deducted from allocations)
     total_final_net = gross_final - commercial_deductions
     total_return_pct_net = (total_final_net - capital_raised_usd) / capital_raised_usd if capital_raised_usd > 0 else 0
-    
+
     # Gross return (excluding commercial impact) for display
     total_return_pct_gross = (gross_final - capital_raised_usd) / capital_raised_usd if capital_raised_usd > 0 else 0
 
-    # Compute total yield across all buckets
-    total_yield_paid = (
-        yield_result["metrics"]["total_yield_usd"] +
-        mining_metrics.get("cumulative_yield_paid_usd", 0)
-    )
+    # Compute total yield across all buckets (use effective period)
+    if early_close_month is not None:
+        total_yield_paid = monthly_cumulative_yield[early_close_month]
+    else:
+        total_yield_paid = (
+            yield_result["metrics"]["total_yield_usd"] +
+            mining_metrics.get("cumulative_yield_paid_usd", 0)
+        )
 
-    effective_apr_net = (total_yield_paid / capital_raised_usd) / (sim_months / 12.0) if capital_raised_usd > 0 and sim_months > 0 else 0
+    effective_apr_net = (total_yield_paid / capital_raised_usd) / (effective_months / 12.0) if capital_raised_usd > 0 and effective_months > 0 else 0
 
     # Decision based on mining bucket health (the riskiest component)
-    decision = mining_result.get("decision", "APPROVED")
-    decision_reasons = mining_result.get("decision_reasons", [])
+    if early_close_month is not None:
+        eff_waterfall = mining_result["monthly_waterfall"][:effective_months]
+        eff_red = sum(1 for m in eff_waterfall if m.get("flag") == "RED")
+        eff_health = eff_waterfall[-1]["health_score"] if eff_waterfall else 0
+        decision, decision_reasons = _make_decision(eff_red, effective_months, eff_health)
+        decision_reasons.append(
+            f"Product closed early at month {early_close_month} "
+            f"(Q{(early_close_month // 3) + 1}) — "
+            f"{early_close_threshold_pct * 100:.0f}% yield target achieved"
+        )
+    else:
+        decision = mining_result.get("decision", "APPROVED")
+        decision_reasons = mining_result.get("decision_reasons", [])
 
     # BTC Under Management summary metrics
     final_btc_mgmt = btc_under_management[-1] if btc_under_management else {}
@@ -639,8 +723,11 @@ def simulate_single_scenario(
         "monthly_portfolio": monthly_portfolio,
         "btc_under_management": btc_under_management,
         "btc_under_management_metrics": btc_under_management_metrics,
+        "early_close": early_close_info,
+        "quarterly_yield_data": quarterly_yield_data,
         "metrics": {
             "capital_raised_usd": round(capital_raised_usd, 2),
+            "effective_months": effective_months,
             # Net figures (what investors actually receive after commercial)
             "final_portfolio_usd": round(total_final_net, 2),
             "total_return_pct": round(total_return_pct_net, 4),
@@ -702,6 +789,7 @@ def simulate_all_scenarios(
     upfront_commercial_pct: float = 0.0,
     management_fees_pct: float = 0.0,
     performance_fees_pct: float = 0.0,
+    early_close_threshold_pct: float = 0.36,
 ) -> Dict[str, Dict]:
     """
     Run all 3 scenarios and return results keyed by scenario name.
@@ -738,6 +826,7 @@ def simulate_all_scenarios(
             upfront_commercial_pct=upfront_commercial_pct,
             management_fees_pct=management_fees_pct,
             performance_fees_pct=performance_fees_pct,
+            early_close_threshold_pct=early_close_threshold_pct,
         )
 
     return results

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 
 const NAV_ITEMS = [
@@ -19,9 +20,16 @@ export default function HearstConnectLayout({ children }: { children: React.Reac
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
       <nav className="w-56 flex-shrink-0 bg-hearst-card border-r border-hearst-border flex flex-col">
-        <div className="px-4 py-4 border-b border-hearst-border">
-          <h1 className="text-sm font-bold text-hearst-accent tracking-wide">HEARST CONNECT</h1>
-          <p className="text-[10px] text-neutral-600 mt-0.5">Mining Analytics Platform</p>
+        <div className="px-4 py-4 border-b border-hearst-border flex flex-col items-start gap-2">
+          <Image
+            src="/hearst-logo.png"
+            alt="Hearst"
+            width={120}
+            height={32}
+            className="object-contain mix-blend-lighten"
+            priority
+          />
+          <p className="text-[10px] text-neutral-600">Mining Analytics Platform</p>
         </div>
         <div className="flex-1 py-2 overflow-auto">
           {NAV_ITEMS.map(item => {

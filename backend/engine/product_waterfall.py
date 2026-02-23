@@ -1,14 +1,21 @@
 """
 Deterministic product performance waterfall engine.
 
-Implements the mining bucket waterfall logic:
+Implements the mining bucket waterfall with YIELD-FIRST prioritization:
 1) BTC production from miner+hosting+network (apply calibration)
 2) OPEX from energy + hosting fees + maintenance
-3) Sell BTC for OPEX at spot
-4) Deficit check (OPEX coverage only)
-5) Yield distribution (capped at base 8% or 12% after BTC holding target hit)
-6) Capitalization — remaining BTC goes to capitalization bucket
-7) Take-profit ladder (optional, on capitalization bucket)
+3) Sell BTC for OPEX at spot (draw from capitalization reserve if production short)
+4) Yield distribution — PRIORITY: uses current surplus + accumulated
+   capitalization reserve to ensure yield is fully paid before any BTC
+   is retained as capitalization. Capped at 8% APR base or 12% APR
+   after BTC holding target is hit.
+5) Capitalization — only BTC remaining AFTER yield is fully served
+6) Take-profit ladder (optional, on capitalization bucket)
+
+The capitalization reserve acts as a yield buffer: it is drawn down in
+months where production alone cannot meet the yield obligation. A month
+is only flagged RED (deficit) when production + reserves together cannot
+cover OPEX.
 
 Capital reconstitution (principal) is handled by the BTC Holding bucket,
 NOT by the mining waterfall. Mining delivers yield and capitalization only.
@@ -49,13 +56,15 @@ def simulate_product_3y(
     take_profit_ladder: List[Dict] = None,
 ) -> Dict:
     """
-    Run the full product waterfall simulation.
+    Run the full product waterfall simulation with yield-first prioritization.
 
-    The waterfall priority is:
-      OPEX -> Yield (8% base, +4% bonus once BTC holding target hit) -> Capitalization
+    Waterfall priority (yield is always served before capitalization grows):
+      1. OPEX (from production, then cap reserve if production short)
+      2. Yield (from surplus + cap reserve, capped at 8%/12% APR)
+      3. Capitalization (only what remains after yield is fully served)
 
     Returns:
-        {monthly_waterfall, metrics, flags, decision, decision_reasons}
+        {monthly_waterfall, quarterly_yield_summary, metrics, flags, decision, decision_reasons}
     """
     if take_profit_ladder is None:
         take_profit_ladder = []
@@ -107,54 +116,81 @@ def simulate_product_3y(
         total_opex_usd = elec_cost_usd + hosting_fee_usd + maintenance_usd
 
         # ──────────────────────────────────────────────
-        # 3) SELL BTC FOR OPEX AT SPOT
+        # 3) DETERMINE YIELD APR FOR THIS MONTH
         # ──────────────────────────────────────────────
-        btc_for_opex = total_opex_usd / spot_price if spot_price > 0 else 0
-        btc_sell_opex = min(btc_produced, btc_for_opex)
-        btc_remaining = btc_produced - btc_sell_opex
-        total_btc_sold += btc_sell_opex
+        if holding_sell_month is not None and t >= holding_sell_month:
+            current_apr = base_yield_apr + bonus_yield_apr
+        else:
+            current_apr = base_yield_apr
+        yield_cap_usd = capital_raised_usd * (current_apr / 12.0)
 
         # ──────────────────────────────────────────────
-        # 4) DEFICIT CHECK (OPEX coverage only)
+        # 4) SELL BTC FOR OPEX — draw from cap reserve if production short
         # ──────────────────────────────────────────────
-        # A month is deficit if BTC produced cannot cover at least 95% of OPEX
+        btc_for_opex = total_opex_usd / spot_price if spot_price > 0 else 0
         opex_coverage_ratio = (btc_produced * spot_price) / total_opex_usd if total_opex_usd > 0 else 999.0
+
+        cap_drawn_for_opex = 0.0
+        cap_drawn_for_yield = 0.0
+        btc_to_cap_this_month = 0.0
         month_flag = "GREEN"
         yield_paid_usd = 0.0
 
-        if btc_produced < btc_for_opex * 0.95:
-            # Not enough BTC to cover OPEX
-            yield_paid_usd = 0.0
-            month_flag = "RED"
-            flags.append(
-                f"Month {t}: DEFICIT — BTC produced ({btc_produced:.6f}) "
-                f"< OPEX required ({btc_for_opex:.6f})"
-            )
-            red_flag_months += 1
-        else:
-            # ──────────────────────────────────────────
-            # 5) YIELD DISTRIBUTION
-            # ──────────────────────────────────────────
-            # Determine current yield APR: base, or base+bonus if holding target hit
-            if holding_sell_month is not None and t >= holding_sell_month:
-                current_apr = base_yield_apr + bonus_yield_apr
-            else:
-                current_apr = base_yield_apr
+        if btc_produced >= btc_for_opex:
+            # ── Production covers OPEX ──
+            btc_sell_opex = btc_for_opex
+            btc_remaining = btc_produced - btc_sell_opex
+            total_btc_sold += btc_sell_opex
 
-            btc_surplus = btc_remaining
-            yield_distributable_usd = btc_surplus * spot_price
-            yield_cap_usd = capital_raised_usd * (current_apr / 12.0)
-            yield_paid_usd = min(yield_distributable_usd, yield_cap_usd)
-
+            # 5) YIELD-FIRST: pool = current surplus + capitalization reserve
+            total_yield_pool_btc = btc_remaining + capitalization_btc
+            total_yield_pool_usd = total_yield_pool_btc * spot_price
+            yield_paid_usd = min(total_yield_pool_usd, yield_cap_usd)
             btc_for_yield = yield_paid_usd / spot_price if spot_price > 0 else 0
-            btc_remaining -= btc_for_yield
             total_btc_sold += btc_for_yield
 
-            # ──────────────────────────────────────────
-            # 6) CAPITALIZATION — remaining BTC goes to capitalization
-            # ──────────────────────────────────────────
-            if btc_remaining > 0:
+            if btc_for_yield <= btc_remaining:
+                btc_remaining -= btc_for_yield
                 capitalization_btc += btc_remaining
+                btc_to_cap_this_month = btc_remaining
+            else:
+                cap_drawn_for_yield = btc_for_yield - btc_remaining
+                capitalization_btc -= cap_drawn_for_yield
+                btc_remaining = 0
+
+        else:
+            # ── Production short of OPEX — try capitalization reserve ──
+            opex_shortfall_btc = btc_for_opex - btc_produced
+
+            if capitalization_btc >= opex_shortfall_btc:
+                btc_sell_opex = btc_for_opex
+                cap_drawn_for_opex = opex_shortfall_btc
+                capitalization_btc -= opex_shortfall_btc
+                total_btc_sold += btc_produced + opex_shortfall_btc
+                btc_remaining = 0
+
+                # Try to pay yield from remaining cap reserve
+                yield_available_usd = capitalization_btc * spot_price
+                yield_paid_usd = min(yield_available_usd, yield_cap_usd)
+                btc_for_yield = yield_paid_usd / spot_price if spot_price > 0 else 0
+                cap_drawn_for_yield = btc_for_yield
+                capitalization_btc -= btc_for_yield
+                total_btc_sold += btc_for_yield
+            else:
+                # Cannot cover OPEX even with reserves — true deficit
+                cap_drawn_for_opex = capitalization_btc
+                btc_sell_opex = btc_produced + capitalization_btc
+                total_btc_sold += btc_sell_opex
+                capitalization_btc = 0
+                btc_remaining = 0
+                yield_paid_usd = 0.0
+                month_flag = "RED"
+                flags.append(
+                    f"Month {t}: DEFICIT — production + reserves "
+                    f"({btc_produced + cap_drawn_for_opex:.6f}) "
+                    f"< OPEX required ({btc_for_opex:.6f})"
+                )
+                red_flag_months += 1
 
         cumulative_yield_paid += yield_paid_usd
 
@@ -167,7 +203,6 @@ def simulate_product_3y(
         # ──────────────────────────────────────────────
         take_profit_sold_usd = 0.0
         for i, tp in enumerate(take_profit_ladder):
-            # Skip if this level was already triggered
             if take_profit_triggered[i]:
                 continue
             if spot_price >= tp.get("price_trigger", float("inf")) and capitalization_btc > 0:
@@ -175,7 +210,7 @@ def simulate_product_3y(
                 take_profit_sold_usd += sell_btc * spot_price
                 capitalization_btc -= sell_btc
                 total_btc_sold += sell_btc
-                take_profit_triggered[i] = True  # Mark as triggered
+                take_profit_triggered[i] = True
 
         # Recalculate capitalization after take-profit
         capitalization_usd = capitalization_btc * spot_price
@@ -183,17 +218,9 @@ def simulate_product_3y(
         # ──────────────────────────────────────────────
         # 8) COMPUTE RATIOS & HEALTH
         # ──────────────────────────────────────────────
-        # Yield fulfillment: actual yield / target yield for this month
         target_yield_usd = capital_raised_usd * (base_yield_apr / 12.0)
         yield_fulfillment = yield_paid_usd / target_yield_usd if target_yield_usd > 0 else 0
 
-        # Determine the applied APR for display
-        if holding_sell_month is not None and t >= holding_sell_month:
-            yield_apr_applied = base_yield_apr + bonus_yield_apr
-        else:
-            yield_apr_applied = base_yield_apr
-
-        # Health score (0-100)
         health = _compute_health_score(opex_coverage_ratio, yield_fulfillment, month_flag)
 
         monthly_waterfall.append({
@@ -202,10 +229,12 @@ def simulate_product_3y(
             "btc_produced": round(btc_produced, 8),
             "btc_sell_opex": round(btc_sell_opex, 8),
             "btc_for_yield": round(yield_paid_usd / spot_price if spot_price > 0 and yield_paid_usd > 0 else 0, 8),
-            "btc_to_capitalization": round(max(0, btc_remaining) if month_flag == "GREEN" else 0, 8),
+            "btc_to_capitalization": round(btc_to_cap_this_month, 8),
+            "cap_drawn_for_opex": round(cap_drawn_for_opex, 8),
+            "cap_drawn_for_yield": round(cap_drawn_for_yield, 8),
             "opex_usd": round(total_opex_usd, 2),
             "yield_paid_usd": round(yield_paid_usd, 2),
-            "yield_apr_applied": round(yield_apr_applied, 4),
+            "yield_apr_applied": round(current_apr, 4),
             "take_profit_sold_usd": round(take_profit_sold_usd, 2),
             "capitalization_btc": round(capitalization_btc, 8),
             "capitalization_usd": round(capitalization_usd, 2),
@@ -222,6 +251,19 @@ def simulate_product_3y(
     avg_yield = cumulative_yield_paid / sim_months if sim_months > 0 else 0
     effective_apr = (cumulative_yield_paid / capital_raised_usd) / (sim_months / 12.0) if capital_raised_usd > 0 and sim_months > 0 else 0
     avg_opex_coverage = sum(m["opex_coverage_ratio"] for m in monthly_waterfall) / sim_months if sim_months > 0 else 0
+
+    # Quarterly yield summary
+    quarterly_yield_summary: List[Dict] = []
+    for q_start in range(0, sim_months, 3):
+        q_end = min(q_start + 3, sim_months)
+        quarter_num = q_start // 3 + 1
+        q_yield = sum(m["yield_paid_usd"] for m in monthly_waterfall[q_start:q_end])
+        q_cum = sum(m["yield_paid_usd"] for m in monthly_waterfall[:q_end])
+        quarterly_yield_summary.append({
+            "quarter": quarter_num,
+            "yield_usd": round(q_yield, 2),
+            "cumulative_yield_usd": round(q_cum, 2),
+        })
 
     metrics = {
         "final_health_score": round(final_health, 1),
@@ -241,6 +283,7 @@ def simulate_product_3y(
 
     return {
         "monthly_waterfall": monthly_waterfall,
+        "quarterly_yield_summary": quarterly_yield_summary,
         "metrics": metrics,
         "flags": flags,
         "decision": decision,

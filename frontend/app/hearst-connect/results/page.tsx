@@ -4,7 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  Legend, AreaChart, Area, BarChart, Bar, ComposedChart,
+  Legend, AreaChart, Area, BarChart, Bar, ComposedChart, ReferenceLine,
 } from 'recharts';
 import PageShell from '@/components/PageShell';
 import SelectField from '@/components/SelectField';
@@ -16,7 +16,7 @@ import { formatUSD, formatPercent, formatNumber, formatBTC, exportAsJSON, export
 const SCENARIO_COLORS = {
   bear: '#ef4444',
   base: '#94a3b8',
-  bull: '#22c55e',
+  bull: '#6BD85A',
 };
 
 const SCENARIO_LABELS: Record<string, string> = {
@@ -46,6 +46,8 @@ function ResultsContent() {
   const [error, setError] = useState('');
   const [viewTab, setViewTab] = useState<ViewTab>('overview');
   const [waterfallScenario, setWaterfallScenario] = useState<string>('base');
+  const [confirmDelete, setConfirmDelete] = useState<'single' | 'all' | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => { loadRuns(); }, []);
 
@@ -73,6 +75,35 @@ function ResultsContent() {
       setError(e.message);
     }
     setLoading(false);
+  };
+
+  const handleDeleteRun = async () => {
+    if (!selectedRunId) return;
+    setDeleting(true);
+    try {
+      await productConfigApi.deleteRun(selectedRunId);
+      setRunData(null);
+      setSelectedRunId('');
+      setConfirmDelete(null);
+      await loadRuns();
+    } catch (e: any) {
+      setError(e.message);
+    }
+    setDeleting(false);
+  };
+
+  const handleDeleteAll = async () => {
+    setDeleting(true);
+    try {
+      await productConfigApi.deleteAllRuns();
+      setRuns([]);
+      setRunData(null);
+      setSelectedRunId('');
+      setConfirmDelete(null);
+    } catch (e: any) {
+      setError(e.message);
+    }
+    setDeleting(false);
   };
 
   const scenarios = runData?.scenario_results ? Object.keys(runData.scenario_results) : [];
@@ -135,31 +166,81 @@ function ResultsContent() {
             }))}
           />
         </div>
-        {hasData && (
-          <div className="flex gap-2 mt-5">
+        <div className="flex gap-2 mt-5">
+          {hasData && (
+            <>
+              <button
+                className="btn-secondary text-[10px]"
+                onClick={() => exportAsJSON(runData, `product-results-${selectedRunId.slice(0, 8)}.json`)}
+              >
+                Export JSON
+              </button>
+              <button
+                className="btn-secondary text-[10px]"
+                onClick={() => {
+                  const rows = portfolioChartData.map((r: any) => ({
+                    month: r.month,
+                    bear_total: r.bear_total,
+                    base_total: r.base_total,
+                    bull_total: r.bull_total,
+                  }));
+                  exportAsCSV(rows, `portfolio-comparison-${selectedRunId.slice(0, 8)}.csv`);
+                }}
+              >
+                Export CSV
+              </button>
+            </>
+          )}
+          {selectedRunId && (
             <button
-              className="btn-secondary text-[10px]"
-              onClick={() => exportAsJSON(runData, `product-results-${selectedRunId.slice(0, 8)}.json`)}
+              className="px-3 py-1.5 text-[10px] font-medium rounded border border-red-700/50 bg-red-900/20 text-red-400 hover:bg-red-900/40 transition-colors"
+              onClick={() => setConfirmDelete('single')}
             >
-              Export JSON
+              Delete Run
             </button>
+          )}
+          {runs.length > 0 && (
             <button
-              className="btn-secondary text-[10px]"
-              onClick={() => {
-                const rows = portfolioChartData.map((r: any) => ({
-                  month: r.month,
-                  bear_total: r.bear_total,
-                  base_total: r.base_total,
-                  bull_total: r.bull_total,
-                }));
-                exportAsCSV(rows, `portfolio-comparison-${selectedRunId.slice(0, 8)}.csv`);
-              }}
+              className="px-3 py-1.5 text-[10px] font-medium rounded border border-red-700/50 bg-red-900/20 text-red-400 hover:bg-red-900/40 transition-colors"
+              onClick={() => setConfirmDelete('all')}
             >
-              Export CSV
+              Delete All ({runs.length})
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-hearst-card border border-hearst-border rounded-xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="text-sm font-semibold text-white mb-2">
+              {confirmDelete === 'all' ? 'Delete All Simulations' : 'Delete Simulation'}
+            </h3>
+            <p className="text-xs text-neutral-400 mb-5">
+              {confirmDelete === 'all'
+                ? `This will permanently delete all ${runs.length} simulation run${runs.length !== 1 ? 's' : ''}. This action cannot be undone.`
+                : `This will permanently delete run ${selectedRunId.slice(0, 8)}... This action cannot be undone.`}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="btn-secondary text-xs"
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 text-xs font-medium rounded bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-50"
+                onClick={confirmDelete === 'all' ? handleDeleteAll : handleDeleteRun}
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting...' : confirmDelete === 'all' ? 'Delete All' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading && (
         <div className="flex items-center justify-center h-64 text-sm text-neutral-500">Loading results...</div>
@@ -204,6 +285,41 @@ function ResultsContent() {
               );
             })}
           </div>
+
+          {/* ═══════════ Early Close Status ═══════════ */}
+          {(() => {
+            const anyEarlyClose = scenarios.some(s => runData.scenario_results[s]?.aggregated?.early_close?.triggered);
+            if (!anyEarlyClose) return null;
+            return (
+              <div className="border border-purple-600/40 bg-purple-900/10 rounded-xl px-5 py-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-bold text-purple-400 uppercase tracking-wide">Early Close Detected</span>
+                  <span className="text-[10px] text-neutral-500">Cumulative yield reached the target threshold before full tenor</span>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  {scenarios.map(s => {
+                    const ec = runData.scenario_results[s]?.aggregated?.early_close;
+                    return (
+                      <div key={s} className="text-xs">
+                        <span className="font-semibold" style={{ color: SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS] }}>
+                          {SCENARIO_LABELS[s]}:
+                        </span>{' '}
+                        {ec?.triggered ? (
+                          <span className="text-purple-300">
+                            Closed Month {ec.close_month} (Q{ec.close_quarter}) — {formatPercent(ec.cumulative_yield_at_close_pct)} yield
+                          </span>
+                        ) : (
+                          <span className="text-neutral-500">
+                            Full term ({runData.scenario_results[s]?.aggregated?.metrics?.effective_months || '—'} mo)
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ═══════════ Key Metrics Comparison ═══════════ */}
           {(() => {
@@ -273,6 +389,49 @@ function ResultsContent() {
                         <td key={s} className="font-mono">{formatUSD(runData.scenario_results[s]?.aggregated?.metrics?.total_yield_paid_usd || 0)}</td>
                       ))}
                     </tr>
+                    <tr>
+                      <td className="font-medium text-neutral-400">Yield Target Progress</td>
+                      {scenarios.map(s => {
+                        const ec = runData.scenario_results[s]?.aggregated?.early_close;
+                        const qData = runData.scenario_results[s]?.aggregated?.quarterly_yield_data || [];
+                        const lastQ = qData[qData.length - 1];
+                        const pct = lastQ?.cumulative_yield_pct || 0;
+                        const target = ec?.target_pct || 0.36;
+                        return (
+                          <td key={s} className="font-mono">
+                            <span className={pct >= target ? 'text-purple-400 font-semibold' : 'text-neutral-400'}>
+                              {formatPercent(pct)} / {formatPercent(target)}
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    <tr>
+                      <td className="font-medium text-neutral-400">Effective Product Life</td>
+                      {scenarios.map(s => {
+                        const ec = runData.scenario_results[s]?.aggregated?.early_close;
+                        const months = runData.scenario_results[s]?.aggregated?.metrics?.effective_months;
+                        return (
+                          <td key={s} className="font-mono">
+                            {ec?.triggered ? (
+                              <span className="text-purple-400">{months} mo (Q{ec.close_quarter})</span>
+                            ) : (
+                              <span>{months} mo</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    <tr>
+                      <td className="font-medium text-neutral-400">Quarterly Yield (Avg)</td>
+                      {scenarios.map(s => {
+                        const qData: any[] = runData.scenario_results[s]?.aggregated?.quarterly_yield_data || [];
+                        const avg = qData.length > 0 ? qData.reduce((sum: number, q: any) => sum + q.yield_usd, 0) / qData.length : 0;
+                        return (
+                          <td key={s} className="font-mono">{formatUSD(avg)}</td>
+                        );
+                      })}
+                    </tr>
                     {hasCommercial && (
                       <tr className="bg-amber-900/10">
                         <td className="font-medium text-amber-400">Commercial Fees (Total)</td>
@@ -320,18 +479,31 @@ function ResultsContent() {
                       formatter={(v: number) => formatUSD(v)}
                     />
                     <Legend wrapperStyle={{ fontSize: 10 }} />
-                    {scenarios.map(s => (
-                      <Line
-                        key={s}
-                        type="monotone"
-                        dataKey={`${s}_total`}
-                        stroke={SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS]}
-                        strokeWidth={s === 'base' ? 2 : 1.5}
-                        strokeDasharray={s === 'base' ? undefined : '5 3'}
-                        dot={false}
-                        name={`${SCENARIO_LABELS[s]} Total`}
-                      />
-                    ))}
+                    {scenarios.map(s => {
+                      const ecMonth = runData.scenario_results[s]?.aggregated?.early_close?.close_month;
+                      return (
+                        <React.Fragment key={s}>
+                          <Line
+                            type="monotone"
+                            dataKey={`${s}_total`}
+                            stroke={SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS]}
+                            strokeWidth={s === 'base' ? 2 : 1.5}
+                            strokeDasharray={s === 'base' ? undefined : '5 3'}
+                            dot={false}
+                            name={`${SCENARIO_LABELS[s]} Total`}
+                          />
+                          {ecMonth != null && (
+                            <ReferenceLine
+                              x={ecMonth}
+                              stroke={SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS]}
+                              strokeDasharray="3 3"
+                              strokeWidth={1}
+                              label={{ value: `${SCENARIO_LABELS[s]} Close`, position: 'top', fontSize: 9, fill: SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS] }}
+                            />
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -349,9 +521,9 @@ function ResultsContent() {
                       formatter={(v: number) => formatUSD(v)}
                     />
                     <Legend wrapperStyle={{ fontSize: 10 }} />
-                    <Area type="monotone" dataKey="base_yield" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.3} name="Yield Liquidity" />
-                    <Area type="monotone" dataKey="base_holding" stackId="1" stroke="#4ade80" fill="#4ade80" fillOpacity={0.3} name="BTC Holding" />
-                    <Area type="monotone" dataKey="base_mining" stackId="1" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.3} name="BTC Mining" />
+                    <Area type="monotone" dataKey="base_yield" stackId="1" stroke="#4FC043" fill="#4FC043" fillOpacity={0.3} name="Yield Liquidity" />
+                    <Area type="monotone" dataKey="base_holding" stackId="1" stroke="#96EA7A" fill="#96EA7A" fillOpacity={0.3} name="BTC Holding" />
+                    <Area type="monotone" dataKey="base_mining" stackId="1" stroke="#B8F2A3" fill="#B8F2A3" fillOpacity={0.3} name="BTC Mining" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -364,6 +536,7 @@ function ResultsContent() {
               <div className="grid grid-cols-3 gap-4">
                 {scenarios.map(s => {
                   const yb = runData.scenario_results[s]?.yield_bucket?.metrics;
+                  const ec = runData.scenario_results[s]?.aggregated?.early_close;
                   return (
                     <div key={s} className="space-y-3">
                       <h4 className="text-xs font-semibold uppercase" style={{ color: SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS] }}>
@@ -372,14 +545,59 @@ function ResultsContent() {
                       <MetricCard label="Final Value" value={formatUSD(yb?.final_value_usd || 0)} status="green" />
                       <MetricCard label="Total Yield" value={formatUSD(yb?.total_yield_usd || 0)} />
                       <MetricCard label="Effective APR" value={formatPercent(yb?.effective_apr || 0)} />
+                      {ec?.triggered && (
+                        <MetricCard label="Early Close" value={`Q${ec.close_quarter} (Mo ${ec.close_month})`} status="green" />
+                      )}
                     </div>
                   );
                 })}
               </div>
 
+              {/* Quarterly Yield Distribution (All Scenarios) */}
               <div className="border border-hearst-border rounded p-4">
-                <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Cumulative Yield (All Scenarios)</h3>
-                <ResponsiveContainer width="100%" height={250}>
+                <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Quarterly Yield Distribution (All Buckets)</h3>
+                <ResponsiveContainer width="100%" height={280}>
+                  <ComposedChart data={(() => {
+                    const maxQuarters = Math.max(...scenarios.map(s =>
+                      (runData.scenario_results[s]?.aggregated?.quarterly_yield_data || []).length
+                    ));
+                    return Array.from({ length: maxQuarters }, (_, i) => {
+                      const row: any = { quarter: `Q${i + 1}` };
+                      for (const s of scenarios) {
+                        const qData = runData.scenario_results[s]?.aggregated?.quarterly_yield_data || [];
+                        row[`${s}_yield`] = qData[i]?.yield_usd || 0;
+                        row[`${s}_pct`] = (qData[i]?.cumulative_yield_pct || 0) * 100;
+                      }
+                      return row;
+                    });
+                  })()}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                    <XAxis dataKey="quarter" tick={{ fontSize: 10, fill: '#737373' }} />
+                    <YAxis yAxisId="usd" tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
+                    <YAxis yAxisId="pct" orientation="right" tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `${v.toFixed(0)}%`} />
+                    <Tooltip
+                      contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }}
+                      formatter={(v: number, name: string) => [name.includes('pct') || name.includes('Progress') ? `${v.toFixed(1)}%` : formatUSD(v), name]}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 10 }} />
+                    <ReferenceLine yAxisId="pct" y={((runData.scenario_results[scenarios[0]]?.aggregated?.early_close?.target_pct || 0.36) * 100)} stroke="#a855f7" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: 'Target', position: 'right', fontSize: 9, fill: '#a855f7' }} />
+                    {scenarios.map(s => (
+                      <Bar key={`${s}_yield`} yAxisId="usd" dataKey={`${s}_yield`} fill={SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS]} opacity={0.6} name={`${SCENARIO_LABELS[s]} Yield ($)`} />
+                    ))}
+                    {scenarios.map(s => (
+                      <Line key={`${s}_pct`} yAxisId="pct" type="monotone" dataKey={`${s}_pct`} stroke={SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS]} strokeWidth={2} dot={{ r: 3 }} name={`${SCENARIO_LABELS[s]} Progress (%)`} />
+                    ))}
+                  </ComposedChart>
+                </ResponsiveContainer>
+                <p className="text-[10px] text-neutral-600 mt-1">
+                  Bars show quarterly yield from all buckets. Lines show cumulative progress toward the {formatPercent(runData.scenario_results[scenarios[0]]?.aggregated?.early_close?.target_pct || 0.36)} early close target.
+                </p>
+              </div>
+
+              {/* Cumulative Yield (original monthly view) */}
+              <div className="border border-hearst-border rounded p-4">
+                <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Cumulative Yield Liquidity Bucket (Monthly)</h3>
+                <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={(() => {
                     const baseYield = runData.scenario_results[scenarios[0]]?.yield_bucket?.monthly_data || [];
                     return baseYield.map((_: any, t: number) => {
@@ -462,6 +680,12 @@ function ResultsContent() {
                 {scenarios.map(s => {
                   const mb = runData.scenario_results[s]?.mining_bucket?.metrics;
                   const holdingHit = runData.scenario_results[s]?.btc_holding_bucket?.metrics?.target_hit;
+                  const holdingSellMonth = runData.scenario_results[s]?.btc_holding_bucket?.metrics?.sell_month;
+                  const ec = runData.scenario_results[s]?.aggregated?.early_close;
+                  const qData = runData.scenario_results[s]?.aggregated?.quarterly_yield_data || [];
+                  const lastQ = qData[qData.length - 1];
+                  const yieldProgress = lastQ?.cumulative_yield_pct || 0;
+                  const target = ec?.target_pct || 0.36;
                   return (
                     <div key={s} className="space-y-3">
                       <h4 className="text-xs font-semibold uppercase" style={{ color: SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS] }}>
@@ -471,8 +695,20 @@ function ResultsContent() {
                       <MetricCard label="Effective APR" value={formatPercent(mb?.effective_apr || 0)} />
                       <MetricCard label="OPEX Coverage" value={`${formatNumber(mb?.avg_opex_coverage_ratio || 0, 2)}x`} status={(mb?.avg_opex_coverage_ratio || 0) >= 1.5 ? 'green' : (mb?.avg_opex_coverage_ratio || 0) >= 1.0 ? 'yellow' : 'red'} />
                       <MetricCard label="Capitalization" value={formatUSD(mb?.capitalization_usd_final || 0)} status={(mb?.capitalization_usd_final || 0) > 0 ? 'green' : 'neutral'} />
-                      <MetricCard label="Yield Cap Bump" value={holdingHit ? 'Active (12%)' : 'Base (8%)'} status={holdingHit ? 'green' : 'neutral'} />
+                      <MetricCard
+                        label="Yield Cap (8% → 12%)"
+                        value={holdingHit ? `Active — Mo ${holdingSellMonth}${holdingSellMonth != null ? ` (Q${Math.floor(holdingSellMonth / 3) + 1})` : ''}` : 'Base (8%)'}
+                        status={holdingHit ? 'green' : 'neutral'}
+                      />
+                      <MetricCard
+                        label="Yield Target Progress"
+                        value={`${formatPercent(yieldProgress)} / ${formatPercent(target)}`}
+                        status={yieldProgress >= target ? 'green' : 'neutral'}
+                      />
                       <MetricCard label="Deficit Months" value={`${mb?.red_flag_months || 0}`} status={(mb?.red_flag_months || 0) === 0 ? 'green' : 'red'} />
+                      {ec?.triggered && (
+                        <MetricCard label="Early Close" value={`Q${ec.close_quarter} (Mo ${ec.close_month})`} status="green" />
+                      )}
                     </div>
                   );
                 })}
@@ -503,22 +739,25 @@ function ResultsContent() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Monthly Yield Comparison */}
+              {/* Mining Quarterly Yield */}
               <div className="border border-hearst-border rounded p-4">
-                <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Monthly Mining Yield (USD)</h3>
-                <ResponsiveContainer width="100%" height={200}>
+                <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Quarterly Mining Yield (USD)</h3>
+                <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={(() => {
-                    const baseWaterfall = runData.scenario_results[scenarios[0]]?.mining_bucket?.monthly_waterfall || [];
-                    return baseWaterfall.map((_: any, t: number) => {
-                      const row: any = { month: t };
+                    const maxQuarters = Math.max(...scenarios.map(s =>
+                      (runData.scenario_results[s]?.mining_bucket?.quarterly_yield_summary || []).length
+                    ));
+                    return Array.from({ length: maxQuarters }, (_, i) => {
+                      const row: any = { quarter: `Q${i + 1}` };
                       for (const s of scenarios) {
-                        row[s] = runData.scenario_results[s]?.mining_bucket?.monthly_waterfall?.[t]?.yield_paid_usd || 0;
+                        const qYield = runData.scenario_results[s]?.mining_bucket?.quarterly_yield_summary || [];
+                        row[s] = qYield[i]?.yield_usd || 0;
                       }
                       return row;
                     });
                   })()}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
-                    <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
+                    <XAxis dataKey="quarter" tick={{ fontSize: 10, fill: '#737373' }} />
                     <YAxis tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
                     <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} formatter={(v: number) => formatUSD(v)} />
                     <Legend wrapperStyle={{ fontSize: 10 }} />
@@ -656,11 +895,11 @@ function ResultsContent() {
                         formatter={(v: number, name: string) => [formatBTC(v), name]}
                       />
                       <Legend wrapperStyle={{ fontSize: 10 }} />
-                      <Area type="monotone" dataKey="Holding BTC" stackId="1" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.3} name="Holding Bucket" />
-                      <Area type="monotone" dataKey="Mining Cap BTC" stackId="1" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.3} name="Mining Capitalization" />
+                      <Area type="monotone" dataKey="Holding BTC" stackId="1" stroke="#6BD85A" fill="#6BD85A" fillOpacity={0.3} name="Holding Bucket" />
+                      <Area type="monotone" dataKey="Mining Cap BTC" stackId="1" stroke="#B8F2A3" fill="#B8F2A3" fillOpacity={0.3} name="Mining Capitalization" />
                       <Line type="monotone" dataKey="Total BTC" stroke="#ffffff" strokeWidth={1.5} strokeDasharray="4 2" dot={false} name="Total BTC" />
                       {strikeMonth !== null && strikeMonth !== undefined && (
-                        <Line type="monotone" dataKey="Strike Event" stroke="#22c55e" strokeWidth={0} dot={{ r: 8, fill: '#22c55e', stroke: '#ffffff', strokeWidth: 2 }} name="Price Strike" />
+                        <Line type="monotone" dataKey="Strike Event" stroke="#96EA7A" strokeWidth={0} dot={{ r: 8, fill: '#96EA7A', stroke: '#ffffff', strokeWidth: 2 }} name="Price Strike" />
                       )}
                     </ComposedChart>
                   </ResponsiveContainer>
@@ -683,9 +922,9 @@ function ResultsContent() {
                         formatter={(v: number, name: string) => [name.includes('Price') ? formatUSD(v) : formatUSD(v), name]}
                       />
                       <Legend wrapperStyle={{ fontSize: 10 }} />
-                      <Area yAxisId="usd" type="monotone" dataKey="Holding Value" stackId="1" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.3} name="Holding Value ($)" />
-                      <Area yAxisId="usd" type="monotone" dataKey="Mining Cap Value" stackId="1" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.3} name="Mining Cap Value ($)" />
-                      <Line yAxisId="price" type="monotone" dataKey="BTC Price" stroke="#a855f7" strokeWidth={1.5} strokeDasharray="4 2" dot={false} name="BTC Price (right axis)" />
+                      <Area yAxisId="usd" type="monotone" dataKey="Holding Value" stackId="1" stroke="#6BD85A" fill="#6BD85A" fillOpacity={0.3} name="Holding Value ($)" />
+                      <Area yAxisId="usd" type="monotone" dataKey="Mining Cap Value" stackId="1" stroke="#B8F2A3" fill="#B8F2A3" fillOpacity={0.3} name="Mining Cap Value ($)" />
+                      <Line yAxisId="price" type="monotone" dataKey="BTC Price" stroke="#3DA834" strokeWidth={1.5} strokeDasharray="4 2" dot={false} name="BTC Price (right axis)" />
                     </ComposedChart>
                   </ResponsiveContainer>
                   <p className="text-[10px] text-neutral-600 mt-1">
@@ -708,8 +947,8 @@ function ResultsContent() {
                           formatter={(v: number, name: string) => [name.includes('%') ? `${v.toFixed(1)}%` : formatUSD(v), name]}
                         />
                         <Legend wrapperStyle={{ fontSize: 10 }} />
-                        <Bar yAxisId="usd" dataKey="Appreciation ($)" fill="#22c55e" opacity={0.7} name="Unrealized Gain ($)" />
-                        <Line yAxisId="pct" type="monotone" dataKey="Appreciation (%)" stroke="#22c55e" strokeWidth={2} dot={false} name="Gain (%)" />
+                        <Bar yAxisId="usd" dataKey="Appreciation ($)" fill="#6BD85A" opacity={0.7} name="Unrealized Gain ($)" />
+                        <Line yAxisId="pct" type="monotone" dataKey="Appreciation (%)" stroke="#6BD85A" strokeWidth={2} dot={false} name="Gain (%)" />
                       </ComposedChart>
                     </ResponsiveContainer>
                     <p className="text-[10px] text-neutral-600 mt-1">
@@ -1015,9 +1254,23 @@ function ResultsContent() {
             const decision = runData.scenario_results[activeScenario]?.aggregated?.decision || 'PENDING';
             const reasons = runData.scenario_results[activeScenario]?.aggregated?.decision_reasons || [];
             const holdingSellMonth = runData.scenario_results[activeScenario]?.btc_holding_bucket?.metrics?.sell_month;
+            const earlyClose = runData.scenario_results[activeScenario]?.aggregated?.early_close;
+            const qYieldData: any[] = runData.scenario_results[activeScenario]?.aggregated?.quarterly_yield_data || [];
             const totalMonths = waterfall.length;
             const redMonths = waterfall.filter((m: any) => m.flag === 'RED').length;
             const greenMonths = totalMonths - redMonths;
+
+            // Build cumulative yield lookup for the table
+            let cumulativeYield = 0;
+            const cumulativeYieldByMonth: Record<number, number> = {};
+            const yieldMonthlyData = runData.scenario_results[activeScenario]?.yield_bucket?.monthly_data || [];
+            for (let t = 0; t < waterfall.length; t++) {
+              const yYield = yieldMonthlyData[t]?.monthly_yield_usd || 0;
+              const mYield = waterfall[t]?.yield_paid_usd || 0;
+              cumulativeYield += yYield + mYield;
+              cumulativeYieldByMonth[t] = cumulativeYield;
+            }
+            const capitalRaised = runData.scenario_results[activeScenario]?.aggregated?.metrics?.capital_raised_usd || 1;
 
             // Build chart data for BTC allocation stacked bar
             const btcAllocationData = waterfall.map((m: any) => ({
@@ -1025,6 +1278,8 @@ function ResultsContent() {
               'OPEX': m.btc_sell_opex,
               'Yield': m.btc_for_yield || 0,
               'Capitalization': m.btc_to_capitalization || 0,
+              'Cap→OPEX': -(m.cap_drawn_for_opex || 0),
+              'Cap→Yield': -(m.cap_drawn_for_yield || 0),
               'Total Produced': m.btc_produced,
             }));
 
@@ -1115,13 +1370,15 @@ function ResultsContent() {
                         formatter={(v: number, name: string) => [formatBTC(v), name]}
                       />
                       <Legend wrapperStyle={{ fontSize: 10 }} />
-                      <Bar dataKey="OPEX" stackId="alloc" fill="#f97316" opacity={0.8} name="OPEX" />
-                      <Bar dataKey="Yield" stackId="alloc" fill="#22c55e" opacity={0.8} name="Yield Distributed" />
-                      <Bar dataKey="Capitalization" stackId="alloc" fill="#06b6d4" opacity={0.8} name="Capitalization" />
+                      <Bar dataKey="OPEX" stackId="alloc" fill="#3DA834" opacity={0.8} name="OPEX" />
+                      <Bar dataKey="Yield" stackId="alloc" fill="#96EA7A" opacity={0.8} name="Yield Distributed" />
+                      <Bar dataKey="Capitalization" stackId="alloc" fill="#B8F2A3" opacity={0.8} name="Capitalization" />
+                      <Bar dataKey="Cap→OPEX" stackId="draw" fill="#F59E0B" opacity={0.7} name="Cap Reserve → OPEX" />
+                      <Bar dataKey="Cap→Yield" stackId="draw" fill="#FBBF24" opacity={0.7} name="Cap Reserve → Yield" />
                       <Line type="monotone" dataKey="Total Produced" stroke="#ffffff" strokeWidth={1.5} strokeDasharray="4 2" dot={false} name="BTC Produced" />
                     </ComposedChart>
                   </ResponsiveContainer>
-                  <p className="text-[10px] text-neutral-600 mt-1">White dashed line = total BTC produced. Stacked bars = how it was allocated. When bars fall short of the line, the month is in deficit.</p>
+                  <p className="text-[10px] text-neutral-600 mt-1">White dashed line = total BTC produced. Stacked bars = allocation from production. <span className="text-amber-400">Amber bars below zero</span> = capitalization reserve drawn down for OPEX or yield top-up.</p>
                 </div>
 
                 {/* ── Capitalization Over Time ── */}
@@ -1138,8 +1395,8 @@ function ResultsContent() {
                         formatter={(v: number, name: string) => [name.includes('USD') ? formatUSD(v) : formatBTC(v), name]}
                       />
                       <Legend wrapperStyle={{ fontSize: 10 }} />
-                      <Area yAxisId="usd" type="monotone" dataKey="Capitalization (USD)" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.15} strokeWidth={2} />
-                      <Line yAxisId="btc" type="monotone" dataKey="Capitalization (BTC)" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
+                      <Area yAxisId="usd" type="monotone" dataKey="Capitalization (USD)" stroke="#6BD85A" fill="#6BD85A" fillOpacity={0.15} strokeWidth={2} />
+                      <Line yAxisId="btc" type="monotone" dataKey="Capitalization (BTC)" stroke="#B8F2A3" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
@@ -1154,9 +1411,9 @@ function ResultsContent() {
                       <YAxis domain={[0, 'auto']} tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `${v}`} label={{ value: '% / Score', angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: '#737373' } }} />
                       <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} formatter={(v: number, name: string) => [`${v.toFixed(1)}${name === 'Health Score' ? '/100' : '%'}`, name]} />
                       <Legend wrapperStyle={{ fontSize: 10 }} />
-                      <Line type="monotone" dataKey="Health Score" stroke="#f59e0b" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="OPEX Coverage" stroke="#f97316" strokeWidth={1.5} dot={false} name="OPEX Coverage (%)" />
-                      <Line type="monotone" dataKey="Yield Fulfillment" stroke="#22c55e" strokeWidth={1.5} dot={false} name="Yield Fulfillment (%)" />
+                      <Line type="monotone" dataKey="Health Score" stroke="#96EA7A" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="OPEX Coverage" stroke="#4FC043" strokeWidth={1.5} dot={false} name="OPEX Coverage (%)" />
+                      <Line type="monotone" dataKey="Yield Fulfillment" stroke="#B8F2A3" strokeWidth={1.5} dot={false} name="Yield Fulfillment (%)" />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -1191,6 +1448,8 @@ function ResultsContent() {
                           <th title="BTC sold to cover OPEX (electricity + hosting + maintenance)">BTC→OPEX</th>
                           <th title="BTC sold/distributed as yield">BTC→Yield</th>
                           <th title="BTC sent to capitalization bucket">BTC→Cap</th>
+                          <th title="BTC drawn from capitalization reserve for OPEX shortfall" className="text-amber-400">Cap→OPEX</th>
+                          <th title="BTC drawn from capitalization reserve to top up yield" className="text-amber-400">Cap→Yield</th>
                           <th title="Total operating expenses in USD">OPEX (USD)</th>
                           <th title="Yield distributed to investors this month">Yield (USD)</th>
                           <th title="Applied yield APR for this month (8% base or 12% with bonus)">APR</th>
@@ -1200,16 +1459,27 @@ function ResultsContent() {
                           <th title="OPEX coverage ratio: revenue / OPEX (>1 means profitable)">OPEX Cov.</th>
                           <th title="Yield fulfillment: actual / target yield (1.0 = 100% delivered)">Yield Fill</th>
                           <th title="Portfolio health score (0-100)">Health</th>
+                          <th title="Cumulative yield from all buckets as % of capital raised" className="text-purple-400">Cum. Yield %</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {waterfall.map((m: any) => {
+                        {waterfall.map((m: any, idx: number) => {
                           const isDeficit = m.flag === 'RED';
                           const isBonusApr = (m.yield_apr_applied || 0) > 0.09;
-                          const rowClass = isDeficit ? 'bg-red-900/15' : '';
+                          const isQuarterEnd = (m.month + 1) % 3 === 0;
+                          const isEarlyCloseMonth = earlyClose?.triggered && m.month === earlyClose.close_month;
+                          const cumYieldPct = (cumulativeYieldByMonth[m.month] || 0) / capitalRaised;
+                          const targetPct = earlyClose?.target_pct || 0.36;
+                          const rowClass = isEarlyCloseMonth
+                            ? 'bg-purple-900/20 border-b-2 border-purple-500/50'
+                            : isDeficit
+                              ? 'bg-red-900/15'
+                              : isQuarterEnd
+                                ? 'border-b border-hearst-border/50'
+                                : '';
                           return (
                             <tr key={m.month} className={rowClass}>
-                              <td className={`sticky left-0 z-10 font-semibold ${isDeficit ? 'bg-red-900/30' : 'bg-hearst-card'}`}>{m.month}</td>
+                              <td className={`sticky left-0 z-10 font-semibold ${isEarlyCloseMonth ? 'bg-purple-900/30' : isDeficit ? 'bg-red-900/30' : 'bg-hearst-card'}`}>{m.month}{isQuarterEnd && <span className="text-[9px] text-neutral-600 ml-0.5">Q{Math.floor(m.month / 3) + 1}</span>}</td>
                               <td>
                                 <span className={`inline-block w-2 h-2 rounded-full mr-1 ${isDeficit ? 'bg-red-500' : 'bg-green-500'}`} />
                                 <span className={`font-semibold ${isDeficit ? 'text-red-400' : 'text-green-400'}`}>
@@ -1221,6 +1491,8 @@ function ResultsContent() {
                               <td className="font-mono text-orange-400">{formatBTC(m.btc_sell_opex)}</td>
                               <td className="font-mono text-green-400">{formatBTC(m.btc_for_yield || 0)}</td>
                               <td className="font-mono text-cyan-400">{formatBTC(m.btc_to_capitalization || 0)}</td>
+                              <td className={`font-mono ${(m.cap_drawn_for_opex || 0) > 0 ? 'text-amber-400 font-semibold' : 'text-neutral-600'}`}>{formatBTC(m.cap_drawn_for_opex || 0)}</td>
+                              <td className={`font-mono ${(m.cap_drawn_for_yield || 0) > 0 ? 'text-amber-400 font-semibold' : 'text-neutral-600'}`}>{formatBTC(m.cap_drawn_for_yield || 0)}</td>
                               <td className="font-mono">{formatUSD(m.opex_usd)}</td>
                               <td className={`font-mono ${m.yield_paid_usd > 0 ? 'text-green-400' : 'text-neutral-600'}`}>{formatUSD(m.yield_paid_usd)}</td>
                               <td className={`font-mono ${isBonusApr ? 'text-hearst-accent font-semibold' : 'text-neutral-400'}`}>{formatPercent(m.yield_apr_applied || 0)}</td>
@@ -1230,6 +1502,10 @@ function ResultsContent() {
                               <td className={`font-mono ${(m.opex_coverage_ratio || 0) >= 1.5 ? 'text-green-400' : (m.opex_coverage_ratio || 0) >= 1.0 ? 'text-yellow-400' : 'text-red-400'}`}>{formatNumber(m.opex_coverage_ratio || 0, 2)}x</td>
                               <td className={`font-mono ${(m.yield_fulfillment || 0) >= 1.0 ? 'text-green-400' : (m.yield_fulfillment || 0) >= 0.5 ? 'text-yellow-400' : 'text-red-400'}`}>{formatPercent(m.yield_fulfillment || 0)}</td>
                               <td className={`font-mono font-semibold ${m.health_score >= 60 ? 'text-green-400' : m.health_score >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>{formatNumber(m.health_score, 1)}</td>
+                              <td className={`font-mono font-semibold ${cumYieldPct >= targetPct ? 'text-purple-400' : cumYieldPct >= targetPct * 0.75 ? 'text-purple-300' : 'text-neutral-500'}`}>
+                                {formatPercent(cumYieldPct)}
+                                {isEarlyCloseMonth && <span className="ml-1 text-[9px] text-purple-400">CLOSE</span>}
+                              </td>
                             </tr>
                           );
                         })}
@@ -1237,10 +1513,15 @@ function ResultsContent() {
                     </table>
                   </div>
                   <div className="px-3 py-2 bg-hearst-card border-t border-hearst-border text-[10px] text-neutral-600">
-                    <span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1 align-middle" /> RED = Deficit month (BTC produced {'<'} 95% of OPEX) &nbsp;
-                    <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1 align-middle" /> GREEN = OPEX covered, yield + capitalization distributed &nbsp;|&nbsp;
-                    Threshold: {'>'} 20% RED months → BLOCKED &nbsp;|&nbsp;
-                    <span className="text-hearst-accent">Blue APR</span> = bonus yield active (BTC holding target hit)
+                    <span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1 align-middle" /> RED = Deficit (production + reserves {'<'} OPEX) &nbsp;
+                    <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1 align-middle" /> GREEN = Yield fully served &nbsp;|&nbsp;
+                    <span className="text-amber-400 font-medium">Cap Draw</span> = capitalization reserve used for OPEX/yield &nbsp;|&nbsp;
+                    <span className="text-hearst-accent">Blue APR</span> = bonus yield active &nbsp;|&nbsp;
+                    <span className="text-purple-400">Cum. Yield %</span> = progress toward {formatPercent(earlyClose?.target_pct || 0.36)} early close target &nbsp;|&nbsp;
+                    Q labels mark quarterly boundaries
+                    {earlyClose?.triggered && (
+                      <span className="ml-2 text-purple-400 font-semibold">CLOSE at Mo {earlyClose.close_month}</span>
+                    )}
                   </div>
                 </div>
               </div>

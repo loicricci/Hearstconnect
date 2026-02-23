@@ -316,8 +316,8 @@ export default function MinersHostingPage() {
                       <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
                       <YAxis tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
                       <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} />
-                      <Line type="monotone" dataKey="cumulative_net_usd" stroke="#4ade80" strokeWidth={1.5} dot={false} name="Cumulative Net (OpEx)" />
-                      <Line type="monotone" dataKey="cumulative_ebit_usd" stroke="#f59e0b" strokeWidth={1.5} dot={false} name="Cumulative EBIT" />
+                      <Line type="monotone" dataKey="cumulative_net_usd" stroke="#96EA7A" strokeWidth={1.5} dot={false} name="Cumulative Net (OpEx)" />
+                      <Line type="monotone" dataKey="cumulative_ebit_usd" stroke="#6BD85A" strokeWidth={1.5} dot={false} name="Cumulative EBIT" />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>

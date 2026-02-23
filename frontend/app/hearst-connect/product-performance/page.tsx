@@ -332,8 +332,8 @@ export default function ProductPerformancePage() {
                     <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1e6).toFixed(1)}M`} />
                     <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} />
                     <Legend wrapperStyle={{ fontSize: 10 }} />
-                    <Line yAxisId="left" type="monotone" dataKey="health_score" stroke="#4ade80" strokeWidth={2} dot={false} name="Health Score" />
-                    <Area yAxisId="right" type="monotone" dataKey="capitalization_usd" fill="#06b6d420" stroke="#06b6d4" strokeWidth={1} name="Capitalization (USD)" />
+                    <Line yAxisId="left" type="monotone" dataKey="health_score" stroke="#96EA7A" strokeWidth={2} dot={false} name="Health Score" />
+                    <Area yAxisId="right" type="monotone" dataKey="capitalization_usd" fill="#6BD85A20" stroke="#6BD85A" strokeWidth={1} name="Capitalization (USD)" />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -349,8 +349,8 @@ export default function ProductPerformancePage() {
                     <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} />
                     <Legend wrapperStyle={{ fontSize: 10 }} />
                     <Bar dataKey="btc_sell_opex" stackId="a" fill="#ef4444" name="OPEX" />
-                    <Bar dataKey="btc_for_yield" stackId="a" fill="#22c55e" name="Yield" />
-                    <Bar dataKey="btc_to_capitalization" stackId="a" fill="#06b6d4" name="Capitalization" />
+                    <Bar dataKey="btc_for_yield" stackId="a" fill="#96EA7A" name="Yield" />
+                    <Bar dataKey="btc_to_capitalization" stackId="a" fill="#B8F2A3" name="Capitalization" />
                     <Line type="monotone" dataKey="btc_produced" stroke="#ffffff" strokeWidth={1.5} dot={false} name="BTC Produced" />
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -365,7 +365,7 @@ export default function ProductPerformancePage() {
                     <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
                     <YAxis tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
                     <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} />
-                    <Area type="monotone" dataKey="yield_paid_usd" fill="#22c55e30" stroke="#22c55e" strokeWidth={1.5} name="Yield Paid USD" />
+                    <Area type="monotone" dataKey="yield_paid_usd" fill="#96EA7A30" stroke="#96EA7A" strokeWidth={1.5} name="Yield Paid USD" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>

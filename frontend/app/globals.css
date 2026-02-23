@@ -9,8 +9,8 @@
   --surface: #1a1a1a;
   --border: #262626;
   --border-light: #333333;
-  --accent: #4ade80;
-  --accent-dim: #22c55e;
+  --accent: #96EA7A;
+  --accent-dim: #6BD85A;
   --muted: #737373;
 }
 
@@ -64,7 +64,7 @@ input[type="number"], input[type="text"], input[type="date"], select {
 }
 input[type="number"]:focus, input[type="text"]:focus, input[type="date"]:focus, select:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.15);
+  box-shadow: 0 0 0 2px rgba(150, 234, 122, 0.15);
 }
 
 /* Buttons */
@@ -98,6 +98,6 @@ input[type="number"]:focus, input[type="text"]:focus, input[type="date"]:focus, 
     color: var(--accent);
   }
   .btn-outline-accent:hover {
-    background-color: rgba(74, 222, 128, 0.08);
+    background-color: rgba(150, 234, 122, 0.08);
   }
 }

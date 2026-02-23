@@ -79,4 +79,6 @@ export const productConfigApi = {
   simulate: (data: any) => request('/product-config/simulate', { method: 'POST', body: JSON.stringify(data) }),
   listRuns: () => request('/product-config/runs'),
   getRun: (id: string) => request(`/product-config/runs/${id}`),
+  deleteRun: (id: string) => request(`/product-config/runs/${id}`, { method: 'DELETE' }),
+  deleteAllRuns: () => request('/product-config/runs', { method: 'DELETE' }),
 };

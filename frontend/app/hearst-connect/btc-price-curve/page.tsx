@@ -566,9 +566,9 @@ export default function BTCPriceCurvePage() {
                       <Area
                         type="monotone"
                         dataKey="confidence"
-                        fill={isML ? '#10b981' : '#4ade80'}
+                        fill={isML ? '#4FC043' : '#96EA7A'}
                         fillOpacity={0.12}
-                        stroke={isML ? '#10b98140' : '#4ade8040'}
+                        stroke={isML ? '#4FC04340' : '#96EA7A40'}
                         strokeWidth={0.5}
                         name={isML ? 'Confidence Band' : 'Bear / Bull Band'}
                       />
@@ -577,7 +577,7 @@ export default function BTCPriceCurvePage() {
                     <Line
                       type="monotone"
                       dataKey="price"
-                      stroke={isML ? '#10b981' : '#4ade80'}
+                      stroke={isML ? '#4FC043' : '#96EA7A'}
                       strokeWidth={2}
                       dot={false}
                       name={isML ? 'Forecast' : 'BTC Price'}

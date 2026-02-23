@@ -24,7 +24,12 @@ app = FastAPI(
 # CORS for Next.js frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000",
+        "https://hearstconnect.vercel.app",
+        "https://hearstconnect-git-main-loic-riccis-projects.vercel.app",
+        "https://hearstconnect-dye7bfcfx-loic-riccis-projects.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

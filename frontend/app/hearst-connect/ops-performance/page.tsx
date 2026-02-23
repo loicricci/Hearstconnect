@@ -209,8 +209,8 @@ export default function OpsPerformancePage() {
                     <YAxis tick={{ fontSize: 10, fill: '#737373' }} />
                     <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} />
                     <Legend wrapperStyle={{ fontSize: 10 }} />
-                    <Bar dataKey="predicted_btc" fill="#4ade80" name="Predicted" />
-                    <Bar dataKey="actual_btc" fill="#22c55e" name="Actual" />
+                    <Bar dataKey="predicted_btc" fill="#96EA7A" name="Predicted" />
+                    <Bar dataKey="actual_btc" fill="#6BD85A" name="Actual" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

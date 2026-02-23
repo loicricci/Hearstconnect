@@ -316,6 +316,12 @@ class ProductConfigRequest(BaseModel):
     structure_type: str = "dedicated"  # dedicated | pooled
     product_tenor_months: int = 36
     exit_window_frequency: str = "quarterly"  # quarterly | semi-annual | annual
+    early_close_threshold_pct: float = Field(
+        default=0.36,
+        ge=0.0,
+        le=1.0,
+        description="Cumulative yield as fraction of capital that triggers early close (e.g. 0.36 = 36%)"
+    )
 
     yield_bucket: YieldBucketConfig
     btc_holding_bucket: BtcHoldingBucketConfig
@@ -329,6 +335,24 @@ class ProductConfigRequest(BaseModel):
     network_curve_ids: Dict[str, str]    # {"bear": id, "base": id, "bull": id}
 
     user: UserContext = UserContext()
+
+
+class EarlyCloseInfo(BaseModel):
+    """Early close detection result."""
+    triggered: bool = False
+    close_month: Optional[int] = None
+    close_quarter: Optional[int] = None
+    cumulative_yield_at_close_pct: float = 0.0
+    target_pct: float = 0.36
+
+
+class QuarterlyYieldEntry(BaseModel):
+    """Quarterly yield aggregation entry."""
+    quarter: int
+    months: List[int]
+    yield_usd: float
+    cumulative_yield_usd: float
+    cumulative_yield_pct: float
 
 
 class CommercialResults(BaseModel):

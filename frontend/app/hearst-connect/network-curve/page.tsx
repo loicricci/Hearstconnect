@@ -489,9 +489,9 @@ export default function NetworkCurvePage() {
                     />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                     {bands?.hashprice && (
-                      <Area type="monotone" dataKey="hp_band" fill="#f59e0b" fillOpacity={0.12} stroke="#f59e0b40" name={isML ? 'CI Band' : 'Bear / Bull'} />
+                      <Area type="monotone" dataKey="hp_band" fill="#6BD85A" fillOpacity={0.12} stroke="#6BD85A40" name={isML ? 'CI Band' : 'Bear / Bull'} />
                     )}
-                    <Line type="monotone" dataKey="hashprice" stroke="#f59e0b" strokeWidth={1.5} dot={false} name="Hashprice" />
+                    <Line type="monotone" dataKey="hashprice" stroke="#6BD85A" strokeWidth={1.5} dot={false} name="Hashprice" />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -515,9 +515,9 @@ export default function NetworkCurvePage() {
                     />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                     {bands?.hashrate && (
-                      <Area type="monotone" dataKey="hr_band" fill="#22c55e" fillOpacity={0.12} stroke="#22c55e40" name={isML ? 'CI Band' : 'Bear / Bull'} />
+                      <Area type="monotone" dataKey="hr_band" fill="#96EA7A" fillOpacity={0.12} stroke="#96EA7A40" name={isML ? 'CI Band' : 'Bear / Bull'} />
                     )}
-                    <Line type="monotone" dataKey="hashrate_eh" stroke="#22c55e" strokeWidth={1.5} dot={false} name="Hashrate" />
+                    <Line type="monotone" dataKey="hashrate_eh" stroke="#96EA7A" strokeWidth={1.5} dot={false} name="Hashrate" />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -541,8 +541,8 @@ export default function NetworkCurvePage() {
                         }}
                       />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Area type="monotone" dataKey="fee_band" fill="#8b5cf6" fillOpacity={0.12} stroke="#8b5cf640" name={isML ? 'CI Band' : 'Bear / Bull'} />
-                      <Line type="monotone" dataKey="fees" stroke="#8b5cf6" strokeWidth={1.5} dot={false} name="Fees/Block" />
+                      <Area type="monotone" dataKey="fee_band" fill="#4FC043" fillOpacity={0.12} stroke="#4FC04340" name={isML ? 'CI Band' : 'Bear / Bull'} />
+                      <Line type="monotone" dataKey="fees" stroke="#4FC043" strokeWidth={1.5} dot={false} name="Fees/Block" />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>

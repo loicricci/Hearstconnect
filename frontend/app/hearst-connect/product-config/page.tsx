@@ -126,6 +126,7 @@ export default function ProductConfigPage() {
   // ── Product Structure ──
   const [capitalRaised, setCapitalRaised] = useState(1_000_000);
   const [exitFreq, setExitFreq] = useState('quarterly');
+  const [earlyCloseThreshold, setEarlyCloseThreshold] = useState(36);
 
   // ── Allocation percentages (source of truth) ──
   const [yieldPct, setYieldPct] = useState(30);
@@ -398,6 +399,7 @@ export default function ProductConfigPage() {
         capital_raised_usd: capitalRaised,
         product_tenor_months: tenor,
         exit_window_frequency: exitFreq,
+        early_close_threshold_pct: earlyCloseThreshold / 100,
         yield_bucket: {
           allocated_usd: yieldAllocated,
           base_apr: yieldBaseApr,
@@ -583,7 +585,7 @@ export default function ProductConfigPage() {
           {/* Yield Structure */}
           <div className="mt-4 pt-4 border-t border-hearst-border">
             <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">Yield Structure</h4>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <InputField label="Base Yield APR" value={miningBaseYield} onChange={v => setMiningBaseYield(Number(v))} type="number" step={0.01} hint="8% base yield from mining" />
               <InputField label="Bonus Yield APR" value={miningBonusYield} onChange={v => setMiningBonusYield(Number(v))} type="number" step={0.01} hint="+4% when BTC target hit" />
               <div className="space-y-1">
@@ -592,6 +594,29 @@ export default function ProductConfigPage() {
                   {((miningBaseYield + miningBonusYield) * 100).toFixed(0)}% <span className="text-neutral-500 font-normal">when target hit</span>
                 </div>
                 <p className="text-[10px] text-neutral-600">Mining yield cap bumps to combined rate</p>
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center min-h-[20px]">
+                  <label className="text-xs font-medium text-neutral-400">Early Close Target</label>
+                  <Tooltip text={`Product closes early when cumulative yield reaches this % of capital raised. Default: ${((miningBaseYield + miningBonusYield) * 100).toFixed(0)}% x ${Math.round(tenor / 12)} years = ${((miningBaseYield + miningBonusYield) * 100 * Math.round(tenor / 12)).toFixed(0)}%.`} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={earlyCloseThreshold}
+                    onChange={e => setEarlyCloseThreshold(Math.max(0, Math.min(100, Number(e.target.value))))}
+                    className="w-full"
+                    min={0}
+                    max={100}
+                    step={1}
+                  />
+                  <span className="text-xs text-neutral-500">%</span>
+                </div>
+                <p className="text-[10px] text-neutral-600">
+                  {earlyCloseThreshold > 0
+                    ? `Close when yield = ${earlyCloseThreshold}% of capital`
+                    : 'Disabled (full tenor)'}
+                </p>
               </div>
             </div>
           </div>

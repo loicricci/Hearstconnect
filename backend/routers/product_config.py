@@ -168,6 +168,7 @@ def simulate_product(req: ProductConfigRequest):
             scenario_curves=scenario_curves,
             capital_raised_usd=req.capital_raised_usd,
             tenor_months=req.product_tenor_months,
+            early_close_threshold_pct=req.early_close_threshold_pct,
             # Yield bucket
             yield_allocated_usd=req.yield_bucket.allocated_usd,
             yield_base_apr=req.yield_bucket.base_apr,
@@ -247,3 +248,27 @@ def get_run(run_id: str):
             "created_by": run.created_by,
             "created_at": run.created_at.isoformat(),
         }
+
+
+@router.delete("/runs/{run_id}")
+def delete_run(run_id: str):
+    """Delete a specific product configuration run."""
+    with Session(db_engine) as session:
+        run = session.get(ProductConfigRun, run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Run not found")
+        session.delete(run)
+        session.commit()
+        return {"ok": True, "deleted": run_id}
+
+
+@router.delete("/runs")
+def delete_all_runs():
+    """Delete all product configuration runs."""
+    with Session(db_engine) as session:
+        runs = session.exec(select(ProductConfigRun)).all()
+        count = len(runs)
+        for run in runs:
+            session.delete(run)
+        session.commit()
+        return {"ok": True, "deleted_count": count}

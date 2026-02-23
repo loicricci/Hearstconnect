@@ -5,7 +5,7 @@
 
 const API_BASE = '/api';
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+async function request<T = any>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: {
       'Content-Type': 'application/json',
@@ -57,6 +57,13 @@ export const hostingApi = {
   update: (id: string, data: any) => request(`/hosting/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) => request(`/hosting/${id}`, { method: 'DELETE' }),
   allocate: (data: any) => request('/hosting/allocate', { method: 'POST', body: JSON.stringify(data) }),
+};
+
+// ── Product Performance ─────────────────────────────────
+export const productApi = {
+  simulate3y: (data: any) => request('/product/simulate-3y', { method: 'POST', body: JSON.stringify(data) }),
+  listRuns: () => request('/product/runs'),
+  getRun: (id: string) => request(`/product/runs/${id}`),
 };
 
 // ── Ops Performance ─────────────────────────────────────

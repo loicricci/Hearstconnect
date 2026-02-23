@@ -59,6 +59,14 @@ export const hostingApi = {
   allocate: (data: any) => request('/hosting/allocate', { method: 'POST', body: JSON.stringify(data) }),
 };
 
+// ── Ops Performance ─────────────────────────────────────
+export const opsApi = {
+  importHistory: (data: any) => request('/ops/import-history', { method: 'POST', body: JSON.stringify(data) }),
+  history: () => request('/ops/history'),
+  calibrate: (data: any) => request('/ops/calibrate', { method: 'POST', body: JSON.stringify(data) }),
+  calibrationRuns: () => request('/ops/calibration-runs'),
+};
+
 // ── Product Configuration ────────────────────────────────
 export const productConfigApi = {
   simulate: (data: any) => request('/product-config/simulate', { method: 'POST', body: JSON.stringify(data) }),

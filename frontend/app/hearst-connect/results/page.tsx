@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -28,6 +28,14 @@ const SCENARIO_LABELS: Record<string, string> = {
 type ViewTab = 'overview' | 'yield' | 'holding' | 'mining' | 'btc_mgmt' | 'commercial' | 'waterfall';
 
 export default function ResultsPage() {
+  return (
+    <Suspense fallback={<PageShell title="Results" subtitle="Loading..."><div className="flex items-center justify-center h-64 text-sm text-neutral-500">Loading...</div></PageShell>}>
+      <ResultsContent />
+    </Suspense>
+  );
+}
+
+function ResultsContent() {
   const searchParams = useSearchParams();
   const runIdParam = searchParams.get('run');
 

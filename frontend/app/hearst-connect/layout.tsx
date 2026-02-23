@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@/components/AuthProvider';
 
 const NAV_ITEMS = [
   { href: '/hearst-connect/btc-price-curve', label: 'BTC Price Curve', short: '1' },
@@ -15,6 +16,7 @@ const NAV_ITEMS = [
 
 export default function HearstConnectLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { user, signOut } = useAuth();
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -54,9 +56,21 @@ export default function HearstConnectLayout({ children }: { children: React.Reac
             );
           })}
         </div>
-        <div className="px-4 py-3 border-t border-hearst-border text-[10px] text-neutral-600">
-          <div>Role: Admin</div>
-          <div>v1.0.0</div>
+        <div className="px-4 py-3 border-t border-hearst-border text-[10px] text-neutral-600 space-y-1">
+          {user && (
+            <div className="truncate text-neutral-400" title={user.email ?? ''}>
+              {user.email}
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span>v1.0.0</span>
+            <button
+              onClick={signOut}
+              className="text-neutral-500 hover:text-hearst-danger transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </nav>
 

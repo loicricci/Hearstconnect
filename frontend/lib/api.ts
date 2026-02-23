@@ -1,21 +1,40 @@
 /**
  * API client for Hearst Connect backend.
  * All requests go through Next.js rewrite proxy -> FastAPI.
+ * Authenticated via Supabase JWT Bearer token.
  */
+
+import { createBrowserClient } from './supabase';
 
 const API_BASE = '/api';
 
+async function getAccessToken(): Promise<string | null> {
+  const supabase = createBrowserClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ?? null;
+}
+
 async function request<T = any>(path: string, options?: RequestInit): Promise<T> {
+  const token = await getAccessToken();
+  const authHeaders: Record<string, string> = {};
+  if (token) {
+    authHeaders['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
     headers: {
       'Content-Type': 'application/json',
-      'X-User-Id': 'system',
+      ...authHeaders,
       ...options?.headers,
     },
     ...options,
   });
 
   if (!res.ok) {
+    if (res.status === 401) {
+      window.location.href = '/login';
+      throw new Error('Session expired');
+    }
     const error = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(error.detail || `API Error: ${res.status}`);
   }

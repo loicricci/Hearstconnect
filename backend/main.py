@@ -1,10 +1,14 @@
 """Hearst Connect — FastAPI backend entry point."""
-from fastapi import FastAPI
+import os
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from .database import create_db_and_tables
+from .auth import get_current_user
 from .routers import btc_price_curve, network_curve, miners, hosting, product_config
+
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 
 
 @asynccontextmanager
@@ -29,6 +33,7 @@ app.add_middleware(
         "https://hearstconnect.vercel.app",
         "https://hearstconnect-git-main-loic-riccis-projects.vercel.app",
         "https://hearstconnect-dye7bfcfx-loic-riccis-projects.vercel.app",
+        SUPABASE_URL,
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -49,11 +54,6 @@ def health_check():
 
 
 @app.get("/api/auth/me")
-def get_current_user_info():
-    """Return mock user info for the frontend."""
-    return {
-        "user_id": "system",
-        "role": "admin",
-        "name": "System Admin",
-        "permissions": ["read", "write", "simulate", "delete"],
-    }
+async def get_current_user_info(user: dict = Depends(get_current_user)):
+    """Return authenticated user info from Supabase JWT."""
+    return user

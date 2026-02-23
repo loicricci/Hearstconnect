@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from .database import create_db_and_tables
 from .auth import get_current_user
-from .routers import btc_price_curve, network_curve, miners, hosting, product_config
+from .routers import btc_price_curve, network_curve, miners, hosting, ops, product_config
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 
@@ -45,6 +45,7 @@ app.include_router(btc_price_curve.router)
 app.include_router(network_curve.router)
 app.include_router(miners.router)
 app.include_router(hosting.router)
+app.include_router(ops.router)
 app.include_router(product_config.router)
 
 

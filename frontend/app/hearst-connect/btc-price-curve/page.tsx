@@ -133,6 +133,7 @@ export default function BTCPriceCurvePage() {
   const [volatilitySeed, setVolatilitySeed] = useState(42);
   const [confidenceBandPct, setConfidenceBandPct] = useState(20);
   const [anchors, setAnchors] = useState<Record<number, number>>({ ...DEFAULT_ANCHORS });
+  const [linkYear0ToStart, setLinkYear0ToStart] = useState(true);
 
   // ── ML mode state ──
   const [modelType, setModelType] = useState('auto_arima');
@@ -142,6 +143,12 @@ export default function BTCPriceCurvePage() {
   const [result, setResult] = useState<any>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (linkYear0ToStart) {
+      setAnchors(prev => ({ ...prev, 0: startPrice }));
+    }
+  }, [startPrice, linkYear0ToStart]);
 
   const updateAnchor = useCallback((year: number, value: number) => {
     setAnchors(prev => ({ ...prev, [year]: value }));
@@ -432,13 +439,35 @@ export default function BTCPriceCurvePage() {
                   {Array.from({ length: 11 }, (_, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <span className="text-xs text-neutral-500 w-12">Year {i}</span>
-                      <input
-                        type="number"
-                        value={anchors[i] || 0}
-                        onChange={e => updateAnchor(i, Number(e.target.value))}
-                        className="flex-1"
-                        step={1000}
-                      />
+                      {i === 0 ? (
+                        <>
+                          <input
+                            type="number"
+                            value={anchors[0] || 0}
+                            onChange={e => updateAnchor(0, Number(e.target.value))}
+                            className={`flex-1 ${linkYear0ToStart ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            step={1000}
+                            disabled={linkYear0ToStart}
+                          />
+                          <label className="flex items-center gap-1.5 cursor-pointer shrink-0" title="Sync Year 0 with Start Price">
+                            <input
+                              type="checkbox"
+                              checked={linkYear0ToStart}
+                              onChange={e => setLinkYear0ToStart(e.target.checked)}
+                              className="rounded bg-hearst-border border-hearst-border-light"
+                            />
+                            <span className="text-[10px] text-neutral-500">= Start</span>
+                          </label>
+                        </>
+                      ) : (
+                        <input
+                          type="number"
+                          value={anchors[i] || 0}
+                          onChange={e => updateAnchor(i, Number(e.target.value))}
+                          className="flex-1"
+                          step={1000}
+                        />
+                      )}
                     </div>
                   ))}
                 </div>

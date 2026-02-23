@@ -182,6 +182,42 @@ class MinerSimResponse(BaseModel):
 
 
 # ──────────────────────────────────────────────────────────
+# PAGE 5 — Ops Performance
+# ──────────────────────────────────────────────────────────
+class OpsHistoryEntry(BaseModel):
+    month: str  # YYYY-MM
+    btc_produced: float
+    uptime: float
+    energy_kwh: float
+    downtime_events: int = 0
+    notes: Optional[str] = None
+
+
+class OpsImportRequest(BaseModel):
+    entries: List[OpsHistoryEntry]
+    user: Optional[dict] = None
+
+
+class OpsCalibrateRequest(BaseModel):
+    btc_price_curve_id: str
+    network_curve_id: str
+    miner_id: str
+    assumed_uptime: float = 0.95
+    electricity_rate: float = 0.05
+    user: Optional[dict] = None
+
+
+class OpsCalibrateResponse(BaseModel):
+    id: str
+    realized_uptime_factor: float
+    realized_efficiency_factor: float
+    production_adjustment: float
+    flags: List[str]
+    monthly_comparison: List[dict]
+    created_at: datetime
+
+
+# ──────────────────────────────────────────────────────────
 # PAGE 4 — Hosting
 # ──────────────────────────────────────────────────────────
 class HostingSiteCreate(BaseModel):

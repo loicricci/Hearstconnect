@@ -60,8 +60,8 @@ export const networkCurveApi = {
 
 // ── Miners ──────────────────────────────────────────────
 export const minersApi = {
-  create: (data: any) => request('/miners/', { method: 'POST', body: JSON.stringify(data) }),
-  list: () => request('/miners/'),
+  create: (data: any) => request('/miners', { method: 'POST', body: JSON.stringify(data) }),
+  list: () => request('/miners'),
   get: (id: string) => request(`/miners/${id}`),
   update: (id: string, data: any) => request(`/miners/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) => request(`/miners/${id}`, { method: 'DELETE' }),
@@ -70,8 +70,8 @@ export const minersApi = {
 
 // ── Hosting ─────────────────────────────────────────────
 export const hostingApi = {
-  create: (data: any) => request('/hosting/', { method: 'POST', body: JSON.stringify(data) }),
-  list: () => request('/hosting/'),
+  create: (data: any) => request('/hosting', { method: 'POST', body: JSON.stringify(data) }),
+  list: () => request('/hosting'),
   get: (id: string) => request(`/hosting/${id}`),
   update: (id: string, data: any) => request(`/hosting/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) => request(`/hosting/${id}`, { method: 'DELETE' }),

@@ -16,7 +16,7 @@ from ..auth import get_current_user, require_permission
 router = APIRouter(prefix="/api/hosting", tags=["Hosting"])
 
 
-@router.post("/", response_model=HostingSiteResponse)
+@router.post("", response_model=HostingSiteResponse)
 def create_site(req: HostingSiteCreate, db: Session = Depends(get_db),
                 user: dict = Depends(get_current_user)):
     require_permission(user, "write")
@@ -27,7 +27,7 @@ def create_site(req: HostingSiteCreate, db: Session = Depends(get_db),
     return _to_response(site)
 
 
-@router.get("/", response_model=List[HostingSiteResponse])
+@router.get("", response_model=List[HostingSiteResponse])
 def list_sites(db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
     require_permission(user, "read")
     sites = db.query(HostingSite).order_by(HostingSite.created_at.desc()).all()

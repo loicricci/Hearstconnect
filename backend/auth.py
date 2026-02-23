@@ -1,10 +1,16 @@
 """Supabase JWT authentication and role-based access control."""
+import logging
 import os
 import httpx
+from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt, JWTError
 from typing import Optional
+
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
+logger = logging.getLogger(__name__)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 ALLOWED_EMAIL_DOMAIN = os.getenv("ALLOWED_EMAIL_DOMAIN", "hearst.com")
@@ -44,21 +50,22 @@ def _decode_token_with_secret(token: str) -> dict:
 
 
 async def _decode_token_with_jwks(token: str) -> dict:
-    """Decode JWT using Supabase JWKS (RS256 fallback)."""
+    """Decode JWT using Supabase JWKS (supports RS256 and ES256)."""
     jwks = await _get_jwks()
     unverified_header = jwt.get_unverified_header(token)
     kid = unverified_header.get("kid")
+    alg = unverified_header.get("alg", "RS256")
     key = None
     for k in jwks.get("keys", []):
         if k.get("kid") == kid:
             key = k
             break
     if key is None:
-        raise JWTError("No matching key found in JWKS")
+        raise JWTError(f"No matching key found in JWKS for kid={kid}")
     return jwt.decode(
         token,
         key,
-        algorithms=["RS256"],
+        algorithms=[alg],
         audience="authenticated",
     )
 
@@ -74,15 +81,23 @@ async def get_current_user(
         )
 
     token = credentials.credentials
+    token_alg = jwt.get_unverified_header(token).get("alg", "")
     try:
-        if SUPABASE_JWT_SECRET:
+        if SUPABASE_JWT_SECRET and token_alg == "HS256":
             payload = _decode_token_with_secret(token)
         else:
             payload = await _decode_token_with_jwks(token)
     except JWTError as e:
+        logger.warning("JWT verification failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid or expired token: {e}",
+        )
+    except Exception as e:
+        logger.error("Unexpected auth error: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed",
         )
 
     email = payload.get("email", "")

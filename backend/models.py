@@ -132,7 +132,35 @@ class HostingAllocationRun(SQLModel, table=True):
 
 
 # ──────────────────────────────────────────────────────────
-# PAGE 4 — Product Configuration (3-Bucket)
+# PAGE 5 — Ops Performance
+# ──────────────────────────────────────────────────────────
+class OpsHistory(SQLModel, table=True):
+    __tablename__ = "ops_history"
+
+    id: str = Field(default_factory=generate_uuid, primary_key=True)
+    month: str = Field(index=True)  # YYYY-MM
+    btc_produced: float
+    uptime: float
+    energy_kwh: float
+    downtime_events: int = Field(default=0)
+    notes: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class OpsCalibrationRun(SQLModel, table=True):
+    __tablename__ = "ops_calibration_runs"
+
+    id: str = Field(default_factory=generate_uuid, primary_key=True)
+    input_snapshot: dict = Field(default={}, sa_column=Column(JSON))
+    factors: dict = Field(default={}, sa_column=Column(JSON))
+    outputs: dict = Field(default={}, sa_column=Column(JSON))
+    flags: List[str] = Field(default=[], sa_column=Column(JSON))
+    created_by: str = Field(default="system")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ──────────────────────────────────────────────────────────
+# PAGE 6 — Product Configuration (3-Bucket)
 # ──────────────────────────────────────────────────────────
 class ProductConfigRun(SQLModel, table=True):
     __tablename__ = "product_config_runs"

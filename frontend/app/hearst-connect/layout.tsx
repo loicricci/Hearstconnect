@@ -56,21 +56,22 @@ export default function HearstConnectLayout({ children }: { children: React.Reac
             );
           })}
         </div>
-        <div className="px-4 py-3 border-t border-hearst-border text-[10px] text-neutral-600 space-y-1">
+        <div className="px-4 py-3 border-t border-hearst-border space-y-2">
           {user && (
-            <div className="truncate text-neutral-400" title={user.email ?? ''}>
+            <div className="truncate text-[10px] text-neutral-400" title={user.email ?? ''}>
               {user.email}
             </div>
           )}
-          <div className="flex items-center justify-between">
-            <span>v1.0.0</span>
-            <button
-              onClick={signOut}
-              className="text-neutral-500 hover:text-hearst-danger transition-colors"
-            >
-              Sign out
-            </button>
-          </div>
+          <button
+            onClick={signOut}
+            className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded text-[11px] font-medium text-neutral-400 bg-hearst-surface border border-hearst-border hover:text-hearst-danger hover:border-hearst-danger/40 transition-colors"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Sign out
+          </button>
+          <div className="text-[10px] text-neutral-600 text-center">v1.0.0</div>
         </div>
       </nav>
 

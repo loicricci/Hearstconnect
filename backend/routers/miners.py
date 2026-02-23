@@ -16,7 +16,7 @@ from ..auth import get_current_user, require_permission
 router = APIRouter(prefix="/api/miners", tags=["Miner Catalog"])
 
 
-@router.post("/", response_model=MinerResponse)
+@router.post("", response_model=MinerResponse)
 def create_miner(req: MinerCreate, db: Session = Depends(get_db),
                  user: dict = Depends(get_current_user)):
     require_permission(user, "write")
@@ -38,7 +38,7 @@ def create_miner(req: MinerCreate, db: Session = Depends(get_db),
     return _to_response(miner)
 
 
-@router.get("/", response_model=List[MinerResponse])
+@router.get("", response_model=List[MinerResponse])
 def list_miners(db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
     require_permission(user, "read")
     miners = db.query(Miner).order_by(Miner.created_at.desc()).all()

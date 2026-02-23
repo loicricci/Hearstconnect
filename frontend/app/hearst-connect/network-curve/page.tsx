@@ -201,13 +201,27 @@ export default function NetworkCurvePage() {
     ? ` (${(confidenceInterval * 100).toFixed(0)}% CI)`
     : bands ? ` (±${confidenceBandPct}%)` : '';
 
+  const halvingEvents = React.useMemo(() => {
+    if (!result) return [];
+    const warnings: string[] = result.warnings || [];
+    return warnings
+      .filter((w: string) => w.startsWith('Halving at month'))
+      .map((w: string) => {
+        const monthMatch = w.match(/month (\d+)/);
+        const subsidyMatch = w.match(/drops to ([\d.]+) BTC/);
+        return {
+          month: monthMatch ? parseInt(monthMatch[1], 10) : 0,
+          subsidy: subsidyMatch ? parseFloat(subsidyMatch[1]) : 0,
+        };
+      });
+  }, [result]);
+
   return (
     <PageShell
       title="Network Curve"
       subtitle="10-year difficulty, hashprice, and fee regime simulation"
       runId={result?.id}
       lastRunAt={result?.created_at}
-      warnings={result?.warnings || []}
       onRun={runSimulation}
       running={running}
     >
@@ -449,6 +463,24 @@ export default function NetworkCurvePage() {
                   value={`${formatNumber(result.network_hashrate_eh[result.network_hashrate_eh.length - 1], 0)} EH/s`}
                 />
               </div>
+
+              {/* Halving Schedule */}
+              {halvingEvents.length > 0 && (
+                <div className="border border-hearst-border rounded p-4">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-2">Halving Schedule</h3>
+                  <div className="flex flex-wrap gap-3">
+                    {halvingEvents.map((ev, i) => (
+                      <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-hearst-accent/10 border border-hearst-accent/20">
+                        <span className="text-[10px] font-medium text-hearst-accent">
+                          Month {ev.month} (Y{Math.floor(ev.month / 12)})
+                        </span>
+                        <span className="text-[10px] text-neutral-500">→</span>
+                        <span className="text-[10px] text-neutral-300">{ev.subsidy} BTC/block</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Model Info (ML only) */}
               {isML && result.model_info && (

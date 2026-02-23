@@ -69,7 +69,7 @@ export const productApi = {
 // ── Ops Performance ─────────────────────────────────────
 export const opsApi = {
   importHistory: (data: any) => request('/ops/import-history', { method: 'POST', body: JSON.stringify(data) }),
-  history: () => request('/ops/history'),
+  getHistory: () => request('/ops/history'),
   calibrate: (data: any) => request('/ops/calibrate', { method: 'POST', body: JSON.stringify(data) }),
   calibrationRuns: () => request('/ops/calibration-runs'),
 };

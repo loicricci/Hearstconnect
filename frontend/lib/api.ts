@@ -4,18 +4,16 @@
  * Authenticated via Supabase JWT Bearer token.
  */
 
-import { createBrowserClient } from './supabase';
+import { getCachedAccessToken } from './supabase';
 
 const API_BASE = '/api';
 
-async function getAccessToken(): Promise<string | null> {
-  const supabase = createBrowserClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token ?? null;
+function getAccessToken(): string | null {
+  return getCachedAccessToken();
 }
 
 async function request<T = any>(path: string, options?: RequestInit): Promise<T> {
-  const token = await getAccessToken();
+  const token = getAccessToken();
   const authHeaders: Record<string, string> = {};
   if (token) {
     authHeaders['Authorization'] = `Bearer ${token}`;

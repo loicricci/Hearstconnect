@@ -17,6 +17,16 @@ export function createBrowserClient() {
   return browserClient;
 }
 
+let _cachedAccessToken: string | null = null;
+
+export function setCachedAccessToken(token: string | null) {
+  _cachedAccessToken = token;
+}
+
+export function getCachedAccessToken(): string | null {
+  return _cachedAccessToken;
+}
+
 export function createServerClient(cookies: CookieStore) {
   return _createServerClient(supabaseUrl, supabaseAnonKey, { cookies });
 }

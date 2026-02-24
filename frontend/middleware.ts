@@ -30,14 +30,14 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { user }, error } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (error || !user) {
     const loginUrl = new URL('/login', request.url);
     return NextResponse.redirect(loginUrl);
   }
 
-  const email = session.user.email ?? '';
+  const email = user.email ?? '';
   const domain = email.split('@')[1];
   if (domain !== ALLOWED_DOMAIN) {
     await supabase.auth.signOut();

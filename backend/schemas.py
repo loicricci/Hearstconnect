@@ -347,7 +347,69 @@ class MiningBucketConfig(BaseModel):
     take_profit_ladder: List[TakeProfitEntry] = []
 
 
+# ──────────────────────────────────────────────────────────
+# Bitcoin Scenario Configuration
+# ──────────────────────────────────────────────────────────
+class StrikeLadderEntry(BaseModel):
+    """Strike price entry for the Bitcoin collateral scenario."""
+    strike_price: float
+    btc_sell_pct: float  # % of total BTC collateral to sell at this strike
+
+
+class BitcoinScenarioConfig(BaseModel):
+    """Configuration for the Bitcoin collateral scenario.
+
+    Capital is split into BTC + stablecoins. BTC is collateralized to mint
+    stablecoins that fund miner purchases (CapEx) and ongoing OPEX.  Mined BTC
+    accumulates into the collateral pool.  Debt is repaid only when BTC strike
+    prices are hit.
+    """
+    btc_allocation_pct: float = Field(
+        default=70.0,
+        ge=0.0,
+        le=100.0,
+        description="% of capital used to buy BTC upfront (rest stays as stablecoin reserve)"
+    )
+    buying_price_usd: float
+    collateral_ltv_pct: float = Field(
+        default=50.0,
+        ge=1.0,
+        le=95.0,
+        description="Max borrowing LTV — can mint stablecoins up to this % of BTC collateral value"
+    )
+    borrowing_apr: float = Field(
+        default=0.08,
+        ge=0.0,
+        le=1.0,
+        description="Annual interest rate on outstanding stablecoin debt (e.g. 0.08 = 8%)"
+    )
+    liquidation_ltv_pct: float = Field(
+        default=80.0,
+        ge=10.0,
+        le=100.0,
+        description="LTV threshold above which the position risks liquidation"
+    )
+    miner_id: str
+    hosting_site_id: str
+    miner_count: int
+    reserve_yield_apr: float = Field(
+        default=0.04,
+        ge=0.0,
+        le=1.0,
+        description="Annual yield rate on the stablecoin reserve (e.g. 0.04 = 4%). Reserve is kept in a yield product."
+    )
+    strike_ladder: List[StrikeLadderEntry] = Field(
+        default=[],
+        description="BTC price ladder — sell BTC to repay debt when strikes are hit"
+    )
+
+
 class ProductConfigRequest(BaseModel):
+    scenario_type: str = Field(
+        default="buckets",
+        description="Product scenario type: 'buckets' (3-bucket allocation) or 'bitcoin' (BTC collateral)"
+    )
+
     capital_raised_usd: float = 10_000_000.0
     structure_type: str = "dedicated"  # dedicated | pooled
     product_tenor_months: int = 36
@@ -359,9 +421,13 @@ class ProductConfigRequest(BaseModel):
         description="Cumulative yield as fraction of capital that triggers early close (e.g. 0.36 = 36%)"
     )
 
-    yield_bucket: YieldBucketConfig
-    btc_holding_bucket: BtcHoldingBucketConfig
-    mining_bucket: MiningBucketConfig
+    # ── Buckets scenario (used when scenario_type == "buckets") ──
+    yield_bucket: Optional[YieldBucketConfig] = None
+    btc_holding_bucket: Optional[BtcHoldingBucketConfig] = None
+    mining_bucket: Optional[MiningBucketConfig] = None
+
+    # ── Bitcoin scenario (used when scenario_type == "bitcoin") ──
+    bitcoin_config: Optional[BitcoinScenarioConfig] = None
 
     # Commercial fees configuration
     commercial: Optional[CommercialConfig] = None
@@ -410,7 +476,19 @@ class ScenarioBucketResults(BaseModel):
     aggregated: dict
 
 
+class ScenarioBitcoinResults(BaseModel):
+    """Results for a single bear/base/bull run of the Bitcoin collateral scenario."""
+    monthly_data: list
+    metrics: dict
+    strike_events: list
+    mining_production: list
+
+
 class ProductConfigResponse(BaseModel):
     id: str
-    scenario_results: Dict[str, ScenarioBucketResults]  # bear / base / bull
+    scenario_type: str = "buckets"
+    # Buckets scenario results (present when scenario_type == "buckets")
+    scenario_results: Optional[Dict[str, ScenarioBucketResults]] = None
+    # Bitcoin scenario results (present when scenario_type == "bitcoin")
+    bitcoin_results: Optional[Dict[str, ScenarioBitcoinResults]] = None
     created_at: datetime

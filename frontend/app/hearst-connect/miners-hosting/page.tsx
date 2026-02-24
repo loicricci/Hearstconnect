@@ -56,21 +56,39 @@ export default function MinersHostingPage() {
   useEffect(() => { loadAll(); }, []);
 
   const loadAll = async () => {
-    try {
-      const [m, s, btc, net]: any[] = await Promise.all([
-        minersApi.list(),
-        hostingApi.list(),
-        btcPriceCurveApi.list(),
-        networkCurveApi.list(),
-      ]);
-      setMiners(m);
-      setSites(s);
-      setCurves(btc);
-      setNetworkCurves(net);
-      if (m.length > 0 && !selectedMiner) setSelectedMiner(m[0].id);
-      if (btc.length > 0 && !selectedBTCCurve) setSelectedBTCCurve(btc[0].id);
-      if (net.length > 0 && !selectedNetCurve) setSelectedNetCurve(net[0].id);
-    } catch (e) { /* API not available yet */ }
+    const results = await Promise.allSettled([
+      minersApi.list(),
+      hostingApi.list(),
+      btcPriceCurveApi.list(),
+      networkCurveApi.list(),
+    ]);
+
+    const [mRes, sRes, btcRes, netRes] = results;
+    const errors: string[] = [];
+
+    if (mRes.status === 'fulfilled') {
+      setMiners(mRes.value as any[]);
+      if ((mRes.value as any[]).length > 0 && !selectedMiner) setSelectedMiner((mRes.value as any[])[0].id);
+    } else { errors.push(`Miners: ${mRes.reason?.message || 'failed'}`); }
+
+    if (sRes.status === 'fulfilled') {
+      setSites(sRes.value as any[]);
+    } else { errors.push(`Hosting: ${sRes.reason?.message || 'failed'}`); }
+
+    if (btcRes.status === 'fulfilled') {
+      setCurves(btcRes.value as any[]);
+      if ((btcRes.value as any[]).length > 0 && !selectedBTCCurve) setSelectedBTCCurve((btcRes.value as any[])[0].id);
+    } else { errors.push(`BTC curves: ${btcRes.reason?.message || 'failed'}`); }
+
+    if (netRes.status === 'fulfilled') {
+      setNetworkCurves(netRes.value as any[]);
+      if ((netRes.value as any[]).length > 0 && !selectedNetCurve) setSelectedNetCurve((netRes.value as any[])[0].id);
+    } else { errors.push(`Network curves: ${netRes.reason?.message || 'failed'}`); }
+
+    if (errors.length > 0) {
+      console.error('[MinersHosting] API errors:', errors);
+      setError(errors.join(' | '));
+    }
   };
 
   // ── Miner CRUD ──

@@ -24,6 +24,11 @@ interface ExtraYieldStrikeEntry {
   btc_share_pct: number;
 }
 
+interface BitcoinStrikeEntry {
+  strike_price: number;
+  btc_sell_pct: number;
+}
+
 /* ────────────────────────────────────────────────
  * Tooltip component for inline help
  * ──────────────────────────────────────────────── */
@@ -117,6 +122,9 @@ function AllocationSlider({
 export default function ProductConfigPage() {
   const router = useRouter();
 
+  // ── Scenario Type ──
+  const [scenarioType, setScenarioType] = useState<'buckets' | 'bitcoin'>('buckets');
+
   // ── Dependencies ──
   const [btcCurves, setBtcCurves] = useState<any[]>([]);
   const [netCurves, setNetCurves] = useState<any[]>([]);
@@ -197,6 +205,33 @@ export default function ProductConfigPage() {
   const [managementFeesPct, setManagementFeesPct] = useState(3);
   const [performanceFeesPct, setPerformanceFeesPct] = useState(3);
 
+  // ── Bitcoin Scenario State ──
+  const [btcAllocPct, setBtcAllocPct] = useState(70);
+  const [btcBuyingPrice, setBtcBuyingPrice] = useState(97000);
+  const [collateralLtv, setCollateralLtv] = useState(40);
+  const [borrowingApr, setBorrowingApr] = useState(0.04);
+  const [liquidationLtv, setLiquidationLtv] = useState(80);
+  const [reserveYieldApr, setReserveYieldApr] = useState(0.04);
+  const [btcSelectedMiner, setBtcSelectedMiner] = useState('');
+  const [btcSelectedSite, setBtcSelectedSite] = useState('');
+  const [btcMinerCount, setBtcMinerCount] = useState(100);
+  const [btcStrikeLadder, setBtcStrikeLadder] = useState<BitcoinStrikeEntry[]>([
+    { strike_price: 120000, btc_sell_pct: 20 },
+    { strike_price: 150000, btc_sell_pct: 25 },
+    { strike_price: 200000, btc_sell_pct: 30 },
+  ]);
+
+  // ── Bitcoin Derived Values ──
+  const btcCapital = capitalRaised * (btcAllocPct / 100);
+  const stablecoinReserve = capitalRaised - btcCapital;
+  const btcQtyPurchased = btcBuyingPrice > 0 ? btcCapital / btcBuyingPrice : 0;
+  const collateralValueAtEntry = btcCapital;
+  const maxMintable = collateralValueAtEntry * (collateralLtv / 100);
+  const btcMinerObj = miners.find(m => m.id === btcSelectedMiner);
+  const minerCapex = btcMinerObj ? btcMinerCount * btcMinerObj.price_usd : 0;
+  const mintableAfterCapex = maxMintable - minerCapex;
+  const btcTenor = btcMinerObj?.lifetime_months ?? 36;
+
   // ── State ──
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
@@ -247,14 +282,20 @@ export default function ProductConfigPage() {
       const price = Math.round(data.bitcoin.usd);
       setLiveBtcPrice(price);
       setBtcPriceUpdatedAt(new Date());
-      if (setAsDefault) setBuyingPrice(price);
+      if (setAsDefault) {
+        setBuyingPrice(price);
+        setBtcBuyingPrice(price);
+      }
     } catch {
       // Silently fail — keep the manual default
     }
     setBtcPriceLoading(false);
   }, []);
 
-  useEffect(() => { fetchLiveBtcPrice(true); loadDependencies(); }, []);
+  useEffect(() => {
+    fetchLiveBtcPrice(true);
+    loadDependencies();
+  }, []);
 
   const loadDependencies = async () => {
     try {
@@ -285,18 +326,26 @@ export default function ProductConfigPage() {
         setSelectedNetFamily(familyName.toLowerCase());
       }
 
-      if (m.length > 0) setSelectedMiner(m[0].id);
-      if (s.length > 0) setSelectedSite(s[0].id);
+      if (m.length > 0) { setSelectedMiner(m[0].id); setBtcSelectedMiner(m[0].id); }
+      if (s.length > 0) { setSelectedSite(s[0].id); setBtcSelectedSite(s[0].id); }
     } catch (e) { /* API not available yet */ }
   };
 
-  // Auto-calculate miner count from allocation and miner price
+  // Auto-calculate miner count from allocation and miner price (Buckets)
   useEffect(() => {
     const miner = miners.find(m => m.id === selectedMiner);
     if (miner && miner.price_usd > 0) {
       setMinerCount(Math.floor(miningAllocated / miner.price_usd));
     }
   }, [miningAllocated, selectedMiner, miners]);
+
+  // Auto-calculate miner count for Bitcoin scenario (from minted stablecoins only)
+  useEffect(() => {
+    const miner = miners.find(m => m.id === btcSelectedMiner);
+    if (miner && miner.price_usd > 0) {
+      setBtcMinerCount(Math.max(1, Math.floor(maxMintable / miner.price_usd)));
+    }
+  }, [maxMintable, btcSelectedMiner, miners]);
 
   /* ────────────────────────────────────────────────
    * Linked slider logic with lock support:
@@ -378,65 +427,98 @@ export default function ProductConfigPage() {
   const allocationValid = Math.abs(totalPct - 100) < 0.5;
 
   const runSimulation = async () => {
-    if (!allocationValid) {
-      setError(`Bucket allocations must equal 100%. Currently: ${totalPct.toFixed(1)}%`);
-      return;
-    }
     if (!btcCurveIds.bear || !btcCurveIds.base || !btcCurveIds.bull ||
         !netCurveIds.bear || !netCurveIds.base || !netCurveIds.bull) {
       setError('Select BTC Price and Network curve sets. Each needs bear/base/bull variants.');
       return;
     }
-    if (!selectedMiner || !selectedSite) {
-      setError('Select a miner and hosting site for the mining bucket.');
-      return;
+
+    if (scenarioType === 'buckets') {
+      if (!allocationValid) {
+        setError(`Bucket allocations must equal 100%. Currently: ${totalPct.toFixed(1)}%`);
+        return;
+      }
+      if (!selectedMiner || !selectedSite) {
+        setError('Select a miner and hosting site for the mining bucket.');
+        return;
+      }
+    } else {
+      if (!btcSelectedMiner || !btcSelectedSite) {
+        setError('Select a miner and hosting site for the Bitcoin scenario.');
+        return;
+      }
     }
 
     setRunning(true);
     setError('');
     try {
-      const payload = {
-        capital_raised_usd: capitalRaised,
-        product_tenor_months: tenor,
-        exit_window_frequency: exitFreq,
-        early_close_threshold_pct: earlyCloseThreshold / 100,
-        yield_bucket: {
-          allocated_usd: yieldAllocated,
-          base_apr: yieldBaseApr,
-          apr_schedule: useAprSchedule ? aprSchedule : null,
-        },
-        btc_holding_bucket: {
-          allocated_usd: holdingAllocated,
-          buying_price_usd: buyingPrice,
-          // target_sell_price_usd is auto-computed server-side
-          capital_recon_pct: capitalReconPct,
-          extra_yield_strikes: capitalReconPct < 100 ? extraYieldStrikes : [],
-        },
-        mining_bucket: {
-          allocated_usd: miningAllocated,
-          miner_id: selectedMiner,
-          hosting_site_id: selectedSite,
-          miner_count: minerCount,
-          base_yield_apr: miningBaseYield,
-          bonus_yield_apr: miningBonusYield,
-          take_profit_ladder: takeProfitLadder,
-        },
-        commercial: (upfrontCommercialPct > 0 || managementFeesPct > 0 || performanceFeesPct > 0) ? {
-          upfront_commercial_pct: upfrontCommercialPct,
-          management_fees_pct: managementFeesPct,
-          performance_fees_pct: performanceFeesPct,
-        } : null,
-        btc_price_curve_ids: btcCurveIds,
-        network_curve_ids: netCurveIds,
-      };
+      let payload: any;
 
-      // Debug: log which curve IDs are being sent per scenario
-      console.log('[ProductConfig] Submitting simulation with curve IDs:', {
-        btc: btcCurveIds,
-        net: netCurveIds,
-        btcAllSame: btcCurveIds.bear === btcCurveIds.base && btcCurveIds.base === btcCurveIds.bull,
-        netAllSame: netCurveIds.bear === netCurveIds.base && netCurveIds.base === netCurveIds.bull,
-      });
+      if (scenarioType === 'buckets') {
+        payload = {
+          scenario_type: 'buckets',
+          capital_raised_usd: capitalRaised,
+          product_tenor_months: tenor,
+          exit_window_frequency: exitFreq,
+          early_close_threshold_pct: earlyCloseThreshold / 100,
+          yield_bucket: {
+            allocated_usd: yieldAllocated,
+            base_apr: yieldBaseApr,
+            apr_schedule: useAprSchedule ? aprSchedule : null,
+          },
+          btc_holding_bucket: {
+            allocated_usd: holdingAllocated,
+            buying_price_usd: buyingPrice,
+            capital_recon_pct: capitalReconPct,
+            extra_yield_strikes: capitalReconPct < 100 ? extraYieldStrikes : [],
+          },
+          mining_bucket: {
+            allocated_usd: miningAllocated,
+            miner_id: selectedMiner,
+            hosting_site_id: selectedSite,
+            miner_count: minerCount,
+            base_yield_apr: miningBaseYield,
+            bonus_yield_apr: miningBonusYield,
+            take_profit_ladder: takeProfitLadder,
+          },
+          commercial: (upfrontCommercialPct > 0 || managementFeesPct > 0 || performanceFeesPct > 0) ? {
+            upfront_commercial_pct: upfrontCommercialPct,
+            management_fees_pct: managementFeesPct,
+            performance_fees_pct: performanceFeesPct,
+          } : null,
+          btc_price_curve_ids: btcCurveIds,
+          network_curve_ids: netCurveIds,
+        };
+      } else {
+        payload = {
+          scenario_type: 'bitcoin',
+          capital_raised_usd: capitalRaised,
+          product_tenor_months: btcTenor,
+          exit_window_frequency: exitFreq,
+          early_close_threshold_pct: earlyCloseThreshold / 100,
+          bitcoin_config: {
+            btc_allocation_pct: btcAllocPct,
+            buying_price_usd: btcBuyingPrice,
+            collateral_ltv_pct: collateralLtv,
+            borrowing_apr: borrowingApr,
+            liquidation_ltv_pct: liquidationLtv,
+            reserve_yield_apr: reserveYieldApr,
+            miner_id: btcSelectedMiner,
+            hosting_site_id: btcSelectedSite,
+            miner_count: btcMinerCount,
+            strike_ladder: btcStrikeLadder,
+          },
+          commercial: (upfrontCommercialPct > 0 || managementFeesPct > 0 || performanceFeesPct > 0) ? {
+            upfront_commercial_pct: upfrontCommercialPct,
+            management_fees_pct: managementFeesPct,
+            performance_fees_pct: performanceFeesPct,
+          } : null,
+          btc_price_curve_ids: btcCurveIds,
+          network_curve_ids: netCurveIds,
+        };
+      }
+
+      console.log('[ProductConfig] Submitting simulation:', { scenarioType, btc: btcCurveIds, net: netCurveIds });
 
       const res: any = await productConfigApi.simulate(payload);
       setRunId(res.id);
@@ -480,7 +562,7 @@ export default function ProductConfigPage() {
   return (
     <PageShell
       title="Product Configuration"
-      subtitle="Configure 3-bucket capital allocation and run multi-scenario simulation"
+      subtitle={scenarioType === 'buckets' ? 'Configure 3-bucket capital allocation and run multi-scenario simulation' : 'Bitcoin collateral strategy — BTC + stablecoin borrowing for miner funding'}
       runId={runId}
       onRun={runSimulation}
       running={running}
@@ -488,6 +570,31 @@ export default function ProductConfigPage() {
       {error && (
         <div className="mb-4 p-3 bg-red-900/30 border border-red-700/50 rounded text-xs text-red-300">{error}</div>
       )}
+
+      {/* ═══════════ SCENARIO TYPE TOGGLE ═══════════ */}
+      <div className="mb-6 flex items-center gap-2">
+        <span className="text-xs text-neutral-500 uppercase font-semibold tracking-wider mr-2">Scenario</span>
+        <button
+          onClick={() => setScenarioType('buckets')}
+          className={`px-4 py-2 text-xs font-semibold rounded-l-lg border transition-all ${
+            scenarioType === 'buckets'
+              ? 'bg-hearst-accent/20 border-hearst-accent text-hearst-accent'
+              : 'bg-hearst-card border-hearst-border text-neutral-500 hover:text-neutral-300'
+          }`}
+        >
+          Buckets (3-Bucket)
+        </button>
+        <button
+          onClick={() => setScenarioType('bitcoin')}
+          className={`px-4 py-2 text-xs font-semibold rounded-r-lg border transition-all ${
+            scenarioType === 'bitcoin'
+              ? 'bg-amber-500/20 border-amber-500 text-amber-400'
+              : 'bg-hearst-card border-hearst-border text-neutral-500 hover:text-neutral-300'
+          }`}
+        >
+          Bitcoin (Collateral)
+        </button>
+      </div>
 
       {hasFallback && (
         <div className="mb-4 p-3 rounded text-xs border bg-emerald-900/20 border-emerald-700/40 text-emerald-300">
@@ -550,6 +657,230 @@ export default function ProductConfigPage() {
       `}</style>
 
       <div className="space-y-6">
+
+        {/* ═══════════════════════════════════════════
+         *  BITCOIN SCENARIO CONFIG
+         * ═══════════════════════════════════════════ */}
+        {scenarioType === 'bitcoin' && (
+          <>
+            {/* Capital & BTC Allocation */}
+            <div className="border border-amber-500/30 rounded p-4 bg-amber-950/5">
+              <h3 className="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-3">Capital & BTC Allocation</h3>
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                <InputField label="Capital Raised (USD)" value={capitalRaised} onChange={v => setCapitalRaised(Number(v))} type="number" />
+                <div className="space-y-1">
+                  <div className="flex items-center min-h-[20px]">
+                    <label className="text-xs font-medium text-neutral-400">Tenor</label>
+                    <Tooltip text="Auto-set from the selected miner's depreciation lifespan." />
+                  </div>
+                  <div className="w-full px-2 py-1.5 rounded bg-hearst-card border border-hearst-border-light text-sm text-neutral-300 tabular-nums">
+                    {btcTenor} months <span className="text-neutral-500">({(btcTenor / 12).toFixed(btcTenor % 12 === 0 ? 0 : 1)} yr{Number((btcTenor / 12).toFixed(1)) !== 1 ? 's' : ''})</span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center min-h-[20px]">
+                    <label className="text-xs font-medium text-neutral-400">Exit Windows</label>
+                  </div>
+                  <select value={exitFreq} onChange={e => setExitFreq(e.target.value)} className="w-full">
+                    <option value="quarterly">Quarterly</option>
+                    <option value="semi-annual">Semi-Annual</option>
+                    <option value="annual">Annual</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Split Slider */}
+              <div className="space-y-2 pt-4 border-t border-amber-500/20">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-neutral-400">Capital Split: BTC vs Stablecoin Reserve</label>
+                  <Tooltip text="Percentage of capital used to purchase BTC upfront. The remainder is placed in a yield product as stablecoin reserve. Miners are bought only from minted stablecoins." />
+                </div>
+                <div className="h-5 rounded-full overflow-hidden flex bg-hearst-card">
+                  <div className="bg-amber-500 transition-all duration-150" style={{ width: `${btcAllocPct}%` }} />
+                  <div className="bg-cyan-500 transition-all duration-150" style={{ width: `${100 - btcAllocPct}%` }} />
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded bg-amber-500" />
+                    <span className="text-amber-400">BTC: {btcAllocPct}%</span>
+                    <span className="text-neutral-600">({formatUSD(btcCapital)})</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded bg-cyan-500" />
+                    <span className="text-cyan-400">Stablecoin Reserve (yield): {100 - btcAllocPct}%</span>
+                    <span className="text-neutral-600">({formatUSD(stablecoinReserve)} @ {(reserveYieldApr * 100).toFixed(0)}% APR)</span>
+                  </div>
+                </div>
+                <input
+                  type="range" min={10} max={95} step={1} value={btcAllocPct}
+                  onChange={e => setBtcAllocPct(Number(e.target.value))}
+                  className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                  style={{ background: `linear-gradient(to right, #f59e0b ${btcAllocPct}%, #06b6d4 ${btcAllocPct}%)` }}
+                />
+              </div>
+
+              {/* BTC Purchase */}
+              <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-amber-500/20">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-neutral-400">BTC Buying Price (USD)</label>
+                    {liveBtcPrice !== null && (
+                      <button onClick={() => setBtcBuyingPrice(liveBtcPrice)} className="text-[10px] text-hearst-accent hover:text-hearst-accent">
+                        Use live: {formatUSD(liveBtcPrice)}
+                      </button>
+                    )}
+                  </div>
+                  <input type="number" value={btcBuyingPrice} onChange={e => setBtcBuyingPrice(Number(e.target.value))} className="w-full" />
+                  <p className="text-[10px] text-neutral-600">BTC qty: {btcQtyPurchased > 0 ? btcQtyPurchased.toFixed(4) : '—'}</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-neutral-400">Collateral Value at Entry</label>
+                  <div className="w-full px-2 py-1.5 rounded bg-hearst-card border border-hearst-border-light text-sm text-amber-400 tabular-nums font-semibold">
+                    {formatUSD(collateralValueAtEntry)}
+                  </div>
+                  <p className="text-[10px] text-neutral-600">{btcQtyPurchased.toFixed(4)} BTC @ {formatUSD(btcBuyingPrice)}</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-neutral-400">Max Stablecoins Mintable</label>
+                  <div className="w-full px-2 py-1.5 rounded bg-hearst-card border border-hearst-border-light text-sm text-cyan-400 tabular-nums font-semibold">
+                    {formatUSD(maxMintable)}
+                  </div>
+                  <p className="text-[10px] text-neutral-600">At {collateralLtv}% LTV</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Collateral Parameters */}
+            <div className="border border-amber-500/30 rounded p-4 bg-amber-950/5">
+              <h3 className="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-3">Collateral & Borrowing Parameters</h3>
+              <div className="grid grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center">
+                    <label className="text-xs font-medium text-neutral-400">Collateral LTV (%)</label>
+                    <Tooltip text="Maximum borrow ratio — mint stablecoins up to this % of BTC collateral value." />
+                  </div>
+                  <input type="number" value={collateralLtv} onChange={e => setCollateralLtv(Math.max(1, Math.min(95, Number(e.target.value))))} className="w-full" step={1} min={1} max={95} />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center">
+                    <label className="text-xs font-medium text-neutral-400">Borrowing APR</label>
+                    <Tooltip text="Annual interest rate on outstanding stablecoin debt. Accrues monthly." />
+                  </div>
+                  <input type="number" value={borrowingApr} onChange={e => setBorrowingApr(Number(e.target.value))} className="w-full" step={0.01} />
+                  <p className="text-[10px] text-neutral-600">{(borrowingApr * 100).toFixed(0)}% annual / {(borrowingApr / 12 * 100).toFixed(2)}% monthly</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center">
+                    <label className="text-xs font-medium text-neutral-400">Liquidation LTV (%)</label>
+                    <Tooltip text="LTV threshold above which the position risks liquidation. Flagged as danger zone." />
+                  </div>
+                  <input type="number" value={liquidationLtv} onChange={e => setLiquidationLtv(Math.max(10, Math.min(100, Number(e.target.value))))} className="w-full" step={1} min={10} max={100} />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center">
+                    <label className="text-xs font-medium text-neutral-400">Reserve Yield APR</label>
+                    <Tooltip text="Annual yield rate earned on the stablecoin reserve. The reserve is placed into a yield product and compounds monthly." />
+                  </div>
+                  <input type="number" value={reserveYieldApr} onChange={e => setReserveYieldApr(Number(e.target.value))} className="w-full" step={0.01} />
+                  <p className="text-[10px] text-neutral-600">{(reserveYieldApr * 100).toFixed(0)}% annual / {(reserveYieldApr / 12 * 100).toFixed(2)}% monthly</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Mining Fleet */}
+            <div className="border border-lime-500/20 rounded p-4 bg-lime-900/5">
+              <h3 className="text-xs font-semibold text-lime-400 uppercase tracking-wider mb-3">Mining Fleet</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <SelectField
+                  label="Miner"
+                  value={btcSelectedMiner}
+                  onChange={setBtcSelectedMiner}
+                  options={miners.map((m: any) => ({ value: m.id, label: `${m.name} (${m.hashrate_th} TH/s, ${formatUSD(m.price_usd)})` }))}
+                />
+                <SelectField
+                  label="Hosting Site"
+                  value={btcSelectedSite}
+                  onChange={setBtcSelectedSite}
+                  options={sites.map((s: any) => ({ value: s.id, label: `${s.name} ($${s.electricity_price_usd_per_kwh}/kWh)` }))}
+                />
+                <InputField label="Miner Count" value={btcMinerCount} onChange={v => setBtcMinerCount(Number(v))} type="number" min={1} hint={`CapEx: ${formatUSD(minerCapex)}`} />
+              </div>
+              {minerCapex > maxMintable && (
+                <div className="mt-3 p-2 bg-red-900/20 border border-red-700/40 rounded text-[10px] text-red-300">
+                  Miner CapEx ({formatUSD(minerCapex)}) exceeds max mintable stablecoins ({formatUSD(maxMintable)}). Reduce miner count or increase BTC allocation / LTV.
+                </div>
+              )}
+              <div className="mt-3 p-2 bg-hearst-card border border-hearst-border rounded text-[10px] text-neutral-400 space-y-1">
+                <div>CapEx funded from minted stablecoins: {formatUSD(Math.min(minerCapex, maxMintable))} of {formatUSD(maxMintable)} mintable</div>
+                {mintableAfterCapex > 0 && (
+                  <div>Remaining mintable capacity for OPEX: {formatUSD(mintableAfterCapex)}</div>
+                )}
+                <div className="text-cyan-400/80">Stablecoin reserve ({formatUSD(stablecoinReserve)}) kept in yield product @ {(reserveYieldApr * 100).toFixed(0)}% APR</div>
+              </div>
+            </div>
+
+            {/* Strike Ladder */}
+            <div className="border border-amber-500/30 rounded p-4 bg-amber-950/5">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Strike Ladder</h3>
+                  <p className="text-[10px] text-neutral-600 mt-0.5">Sell BTC at strike prices to repay stablecoin debt</p>
+                </div>
+                <button
+                  className="btn-secondary text-[10px]"
+                  onClick={() => setBtcStrikeLadder([...btcStrikeLadder, { strike_price: 200000, btc_sell_pct: 20 }])}
+                >
+                  + Add Strike
+                </button>
+              </div>
+              <div className="space-y-2">
+                {btcStrikeLadder.map((strike, idx) => {
+                  const btcAtStrike = btcQtyPurchased * (strike.btc_sell_pct / 100);
+                  const usdAtStrike = btcAtStrike * strike.strike_price;
+                  return (
+                    <div key={idx} className="flex items-center gap-2 text-xs">
+                      <span className="text-amber-400 font-medium w-4">{idx + 1}.</span>
+                      <span className="text-neutral-500 w-16">Strike $</span>
+                      <input
+                        type="number" value={strike.strike_price}
+                        onChange={e => {
+                          const updated = [...btcStrikeLadder];
+                          updated[idx] = { ...updated[idx], strike_price: Number(e.target.value) };
+                          setBtcStrikeLadder(updated);
+                        }}
+                        className="w-28" step={5000}
+                      />
+                      <span className="text-neutral-500 w-12">Sell %</span>
+                      <input
+                        type="number" value={strike.btc_sell_pct}
+                        onChange={e => {
+                          const updated = [...btcStrikeLadder];
+                          updated[idx] = { ...updated[idx], btc_sell_pct: Number(e.target.value) };
+                          setBtcStrikeLadder(updated);
+                        }}
+                        className="w-16" step={5} min={0} max={100}
+                      />
+                      <span className="text-neutral-600 text-[10px]">
+                        = {btcAtStrike.toFixed(4)} BTC → {formatUSD(usdAtStrike)}
+                      </span>
+                      <button className="text-red-400/60 hover:text-red-400" onClick={() => setBtcStrikeLadder(btcStrikeLadder.filter((_, i) => i !== idx))}>x</button>
+                    </div>
+                  );
+                })}
+              </div>
+              {btcStrikeLadder.length > 0 && (
+                <div className="mt-2 text-[10px] text-neutral-500">
+                  Total sell allocation: {btcStrikeLadder.reduce((s, e) => s + e.btc_sell_pct, 0).toFixed(0)}% of BTC collateral at time of strike
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ═══════════════════════════════════════════
+         *  BUCKETS SCENARIO CONFIG (existing)
+         * ═══════════════════════════════════════════ */}
+        {scenarioType === 'buckets' && (<>
         {/* ═══════════ SECTION A: Product Structure ═══════════ */}
         <div className="border border-hearst-border rounded p-4">
           <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Product Structure</h3>
@@ -968,6 +1299,7 @@ export default function ProductConfigPage() {
             </div>
           </div>
         </div>
+        </>)}
 
         {/* ═══════════ SECTION C: Commercial Fees ═══════════ */}
         <div className="border border-hearst-border rounded p-4">

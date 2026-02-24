@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { createBrowserClient } from '@/lib/supabase';
+import { createBrowserClient, setCachedAccessToken } from '@/lib/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -23,19 +23,26 @@ export function useAuth() {
 }
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const supabase = createBrowserClient();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
-      setSession(data.session);
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setCachedAccessToken(session?.access_token ?? null);
+      setSession(session);
+      setUser(session?.user ?? null);
       setLoading(false);
-    });
+    };
+    init();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event: string, session: Session | null) => {
+      async (_event: string, session: Session | null) => {
+        setCachedAccessToken(session?.access_token ?? null);
         setSession(session);
+        setUser(session?.user ?? null);
         setLoading(false);
       },
     );
@@ -51,7 +58,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   return (
     <AuthContext.Provider
       value={{
-        user: session?.user ?? null,
+        user,
         session,
         loading,
         signOut,

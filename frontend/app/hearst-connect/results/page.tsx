@@ -25,7 +25,8 @@ const SCENARIO_LABELS: Record<string, string> = {
   bull: 'Bull',
 };
 
-type ViewTab = 'overview' | 'yield' | 'holding' | 'mining' | 'btc_mgmt' | 'commercial' | 'waterfall';
+type ViewTab = 'overview' | 'yield' | 'holding' | 'mining' | 'btc_mgmt' | 'commercial' | 'waterfall'
+  | 'btc_overview' | 'btc_collateral' | 'btc_debt' | 'btc_ltv' | 'btc_strikes' | 'btc_mining';
 
 export default function ResultsPage() {
   return (
@@ -71,6 +72,8 @@ function ResultsContent() {
     try {
       const data: any = await productConfigApi.getRun(id);
       setRunData(data);
+      const st = data?.input_snapshot?.scenario_type || 'buckets';
+      setViewTab(st === 'bitcoin' ? 'btc_overview' : 'overview');
     } catch (e: any) {
       setError(e.message);
     }
@@ -106,6 +109,9 @@ function ResultsContent() {
     setDeleting(false);
   };
 
+  const scenarioType: string = runData?.input_snapshot?.scenario_type || 'buckets';
+  const isBitcoin = scenarioType === 'bitcoin';
+
   const scenarios = runData?.scenario_results ? Object.keys(runData.scenario_results) : [];
   const hasData = runData && scenarios.length > 0;
 
@@ -134,7 +140,7 @@ function ResultsContent() {
     return 'red';
   };
 
-  const VIEW_TABS: { key: ViewTab; label: string }[] = [
+  const BUCKET_TABS: { key: ViewTab; label: string }[] = [
     { key: 'overview', label: 'Portfolio Overview' },
     { key: 'yield', label: 'Yield Liquidity' },
     { key: 'holding', label: 'BTC Holding' },
@@ -143,6 +149,17 @@ function ResultsContent() {
     { key: 'commercial', label: 'Commercial' },
     { key: 'waterfall', label: 'Waterfall Detail' },
   ];
+
+  const BITCOIN_TABS: { key: ViewTab; label: string }[] = [
+    { key: 'btc_overview', label: 'Overview' },
+    { key: 'btc_collateral', label: 'BTC Collateral' },
+    { key: 'btc_debt', label: 'Stablecoin Debt' },
+    { key: 'btc_ltv', label: 'LTV Monitor' },
+    { key: 'btc_strikes', label: 'Strike Events' },
+    { key: 'btc_mining', label: 'Mining Detail' },
+  ];
+
+  const VIEW_TABS = isBitcoin ? BITCOIN_TABS : BUCKET_TABS;
 
   return (
     <PageShell
@@ -162,7 +179,7 @@ function ResultsContent() {
             onChange={setSelectedRunId}
             options={runs.map((r: any) => ({
               value: r.id,
-              label: `${r.id.slice(0, 8)}... — ${r.capital_raised_usd ? formatUSD(r.capital_raised_usd) : ''} — ${new Date(r.created_at).toLocaleDateString()}`,
+              label: `${r.scenario_type === 'bitcoin' ? '[BTC]' : '[Buckets]'} ${r.id.slice(0, 8)}... — ${r.capital_raised_usd ? formatUSD(r.capital_raised_usd) : ''} — ${new Date(r.created_at).toLocaleDateString()}`,
             }))}
           />
         </div>
@@ -254,7 +271,15 @@ function ResultsContent() {
 
       {hasData && (
         <div className="space-y-6">
-          {/* ═══════════ Decision Banners ═══════════ */}
+          {/* ═══════════ Scenario Type Badge ═══════════ */}
+          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded text-xs font-semibold ${
+            isBitcoin ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' : 'bg-hearst-accent/20 text-hearst-accent border border-hearst-accent/40'
+          }`}>
+            {isBitcoin ? 'Bitcoin Collateral Scenario' : 'Buckets (3-Bucket) Scenario'}
+          </div>
+
+          {/* ═══════════ Decision Banners (Buckets only) ═══════════ */}
+          {!isBitcoin && (
           <div className="grid grid-cols-3 gap-4">
             {scenarios.map(s => {
               const agg = runData.scenario_results[s]?.aggregated;
@@ -285,9 +310,10 @@ function ResultsContent() {
               );
             })}
           </div>
+          )}
 
-          {/* ═══════════ Early Close Status ═══════════ */}
-          {(() => {
+          {/* ═══════════ Early Close Status (Buckets only) ═══════════ */}
+          {!isBitcoin && (() => {
             const anyEarlyClose = scenarios.some(s => runData.scenario_results[s]?.aggregated?.early_close?.triggered);
             if (!anyEarlyClose) return null;
             return (
@@ -321,8 +347,8 @@ function ResultsContent() {
             );
           })()}
 
-          {/* ═══════════ Key Metrics Comparison ═══════════ */}
-          {(() => {
+          {/* ═══════════ Key Metrics Comparison (Buckets only) ═══════════ */}
+          {!isBitcoin && (() => {
             // Check if commercial fees are configured
             const hasCommercial = scenarios.some(s => runData.scenario_results[s]?.commercial?.total_commercial_value_usd > 0);
             
@@ -1245,6 +1271,577 @@ function ResultsContent() {
               </div>
             );
           })()}
+
+          {/* ═══════════════════════════════════════════════════
+           *  BITCOIN SCENARIO TABS
+           * ═══════════════════════════════════════════════════ */}
+
+          {/* ═══════════ BTC OVERVIEW TAB ═══════════ */}
+          {viewTab === 'btc_overview' && isBitcoin && (() => {
+            const btcChartData = (() => {
+              const base = runData.scenario_results['base'] || runData.scenario_results[scenarios[0]];
+              const months = base?.monthly_data?.length || 0;
+              return Array.from({ length: months }, (_, t) => {
+                const row: any = { month: t };
+                for (const s of scenarios) {
+                  const md = runData.scenario_results[s]?.monthly_data;
+                  row[`${s}_equity`] = md?.[t]?.net_equity_usd || 0;
+                  row[`${s}_collateral`] = md?.[t]?.collateral_value_usd || 0;
+                  row[`${s}_debt`] = md?.[t]?.stablecoin_debt || 0;
+                }
+                return row;
+              });
+            })();
+
+            return (
+              <div className="space-y-4">
+                {/* Key Metrics */}
+                <div className="border border-hearst-border rounded overflow-hidden">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Metric</th>
+                        {scenarios.map(s => (
+                          <th key={s} style={{ color: SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS] }}>{SCENARIO_LABELS[s]}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Net Equity</td>
+                        {scenarios.map(s => {
+                          const m = runData.scenario_results[s]?.metrics;
+                          const v = m?.final_net_equity_usd || 0;
+                          return <td key={s} className={`font-mono ${v >= (m?.capital_raised_usd || 0) ? 'text-green-400' : 'text-red-400'}`}>{formatUSD(v)}</td>;
+                        })}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Total Return</td>
+                        {scenarios.map(s => {
+                          const pct = runData.scenario_results[s]?.metrics?.total_return_pct || 0;
+                          return <td key={s} className={`font-mono ${pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatPercent(pct)}</td>;
+                        })}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Final BTC Collateral</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono">{formatBTC(runData.scenario_results[s]?.metrics?.final_btc_collateral || 0)}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Collateral Value</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono">{formatUSD(runData.scenario_results[s]?.metrics?.final_collateral_value_usd || 0)}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Outstanding Debt</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono text-red-400">{formatUSD(runData.scenario_results[s]?.metrics?.final_stablecoin_debt || 0)}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Final LTV</td>
+                        {scenarios.map(s => {
+                          const ltv = runData.scenario_results[s]?.metrics?.final_ltv_pct || 0;
+                          const liq = runData.input_snapshot?.bitcoin_config?.liquidation_ltv_pct || 80;
+                          return <td key={s} className={`font-mono ${ltv >= liq ? 'text-red-400 font-bold' : ltv >= liq * 0.8 ? 'text-yellow-400' : 'text-green-400'}`}>{formatNumber(ltv, 1)}%</td>;
+                        })}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Total BTC Mined</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono">{formatBTC(runData.scenario_results[s]?.metrics?.total_btc_mined || 0)}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Total Interest Paid</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono text-amber-400">{formatUSD(runData.scenario_results[s]?.metrics?.total_interest_paid_usd || 0)}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Debt Repaid (Strikes)</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono text-green-400">{formatUSD(runData.scenario_results[s]?.metrics?.total_debt_repaid_usd || 0)}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Strikes Triggered</td>
+                        {scenarios.map(s => {
+                          const m = runData.scenario_results[s]?.metrics;
+                          return <td key={s} className="font-mono">{m?.strikes_triggered || 0} / {m?.strikes_total || 0}</td>;
+                        })}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Liquidation Risk Months</td>
+                        {scenarios.map(s => {
+                          const v = runData.scenario_results[s]?.metrics?.liquidation_risk_months || 0;
+                          return <td key={s} className={`font-mono ${v > 0 ? 'text-red-400 font-bold' : 'text-green-400'}`}>{v}</td>;
+                        })}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Net Equity Chart */}
+                <div className="border border-hearst-border rounded p-4">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Net Equity Over Time (BTC Value - Debt + Reserve)</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={btcChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
+                      <YAxis tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1_000_000).toFixed(1)}M`} />
+                      <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} formatter={(v: number) => formatUSD(v)} />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <ReferenceLine y={runData.scenario_results[scenarios[0]]?.metrics?.capital_raised_usd || 0} stroke="#525252" strokeDasharray="6 3" label={{ value: 'Capital', position: 'right', fontSize: 9, fill: '#525252' }} />
+                      {scenarios.map(s => (
+                        <Line key={s} type="monotone" dataKey={`${s}_equity`} stroke={SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS]} strokeWidth={s === 'base' ? 2 : 1.5} strokeDasharray={s === 'base' ? undefined : '5 3'} dot={false} name={`${SCENARIO_LABELS[s]} Net Equity`} />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Collateral vs Debt (Base) */}
+                <div className="border border-hearst-border rounded p-4">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Collateral Value vs Stablecoin Debt (Base Scenario)</h3>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <AreaChart data={btcChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
+                      <YAxis tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1_000_000).toFixed(1)}M`} />
+                      <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} formatter={(v: number) => formatUSD(v)} />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <Area type="monotone" dataKey="base_collateral" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.15} strokeWidth={2} name="Collateral Value" />
+                      <Area type="monotone" dataKey="base_debt" stroke="#ef4444" fill="#ef4444" fillOpacity={0.1} strokeWidth={2} name="Stablecoin Debt" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ═══════════ BTC COLLATERAL TAB ═══════════ */}
+          {viewTab === 'btc_collateral' && isBitcoin && (() => {
+            const activeScenario = scenarios.includes(waterfallScenario) ? waterfallScenario : scenarios[0];
+            const md: any[] = runData.scenario_results[activeScenario]?.monthly_data || [];
+            const metrics = runData.scenario_results[activeScenario]?.metrics || {};
+
+            const collateralChartData = md.map((m: any) => ({
+              month: m.month,
+              'BTC Collateral': m.btc_collateral,
+              'BTC Mined (cumulative)': 0,
+              'Collateral Value ($)': m.collateral_value_usd,
+              'BTC Price': m.btc_price_usd,
+            }));
+
+            let cumMined = 0;
+            for (const row of collateralChartData) {
+              const m = md[row.month];
+              cumMined += m?.btc_mined || 0;
+              row['BTC Mined (cumulative)'] = cumMined;
+            }
+
+            return (
+              <div className="space-y-5">
+                <div className="flex gap-1 mb-2">
+                  {scenarios.map(s => (
+                    <button key={s} onClick={() => setWaterfallScenario(s)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded transition-colors uppercase ${activeScenario === s ? 'bg-hearst-border text-white' : 'bg-hearst-card text-neutral-500 hover:text-neutral-300'}`}
+                      style={activeScenario === s ? { borderBottom: `2px solid ${SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS]}` } : undefined}
+                    >{SCENARIO_LABELS[s]}</button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-4 gap-4">
+                  <MetricCard label="BTC Purchased" value={formatBTC(metrics.btc_purchased || 0)} />
+                  <MetricCard label="BTC Mined (Total)" value={formatBTC(metrics.total_btc_mined || 0)} status="green" />
+                  <MetricCard label="Final BTC Collateral" value={formatBTC(metrics.final_btc_collateral || 0)} />
+                  <MetricCard label="Final Collateral Value" value={formatUSD(metrics.final_collateral_value_usd || 0)} status="green" />
+                </div>
+
+                <div className="border border-hearst-border rounded p-4">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">BTC Collateral Over Time</h3>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <ComposedChart data={collateralChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
+                      <YAxis yAxisId="btc" tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => v.toFixed(2)} />
+                      <YAxis yAxisId="usd" orientation="right" tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <Area yAxisId="btc" type="monotone" dataKey="BTC Collateral" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.2} strokeWidth={2} />
+                      <Line yAxisId="usd" type="monotone" dataKey="BTC Price" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="border border-hearst-border rounded p-4">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Collateral USD Value Over Time</h3>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <AreaChart data={collateralChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
+                      <YAxis tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1_000_000).toFixed(1)}M`} />
+                      <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} formatter={(v: number) => formatUSD(v)} />
+                      <Area type="monotone" dataKey="Collateral Value ($)" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.15} strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ═══════════ BTC DEBT TAB ═══════════ */}
+          {viewTab === 'btc_debt' && isBitcoin && (() => {
+            const activeScenario = scenarios.includes(waterfallScenario) ? waterfallScenario : scenarios[0];
+            const md: any[] = runData.scenario_results[activeScenario]?.monthly_data || [];
+            const metrics = runData.scenario_results[activeScenario]?.metrics || {};
+            const strikeEvts: any[] = runData.scenario_results[activeScenario]?.strike_events || [];
+
+            const debtChartData = md.map((m: any) => ({
+              month: m.month,
+              'Stablecoin Debt': m.stablecoin_debt,
+              'Stablecoin Reserve': m.stablecoin_reserve,
+              'Interest Accrued': m.interest_usd,
+              'OPEX Paid': m.opex_usd,
+              'Strike Repayment': m.strike_debt_repaid,
+            }));
+
+            return (
+              <div className="space-y-5">
+                <div className="flex gap-1 mb-2">
+                  {scenarios.map(s => (
+                    <button key={s} onClick={() => setWaterfallScenario(s)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded transition-colors uppercase ${activeScenario === s ? 'bg-hearst-border text-white' : 'bg-hearst-card text-neutral-500 hover:text-neutral-300'}`}
+                      style={activeScenario === s ? { borderBottom: `2px solid ${SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS]}` } : undefined}
+                    >{SCENARIO_LABELS[s]}</button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-4 gap-4">
+                  <MetricCard label="Outstanding Debt" value={formatUSD(metrics.final_stablecoin_debt || 0)} status="red" />
+                  <MetricCard label="Total Interest" value={formatUSD(metrics.total_interest_paid_usd || 0)} />
+                  <MetricCard label="Total Debt Repaid" value={formatUSD(metrics.total_debt_repaid_usd || 0)} status="green" />
+                  <MetricCard label="Stablecoin Reserve" value={formatUSD(metrics.final_stablecoin_reserve || 0)} />
+                </div>
+
+                <div className="border border-hearst-border rounded p-4">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Stablecoin Debt Over Time</h3>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <ComposedChart data={debtChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
+                      <YAxis tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1_000_000).toFixed(1)}M`} />
+                      <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} formatter={(v: number) => formatUSD(v)} />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <Area type="monotone" dataKey="Stablecoin Debt" stroke="#ef4444" fill="#ef4444" fillOpacity={0.1} strokeWidth={2} />
+                      <Area type="monotone" dataKey="Stablecoin Reserve" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.1} strokeWidth={1.5} />
+                      {strikeEvts.map((evt: any, i: number) => (
+                        <ReferenceLine key={i} x={evt.month} stroke="#22c55e" strokeDasharray="3 3" label={{ value: `Strike $${(evt.strike_price / 1000).toFixed(0)}k`, position: 'top', fontSize: 8, fill: '#22c55e' }} />
+                      ))}
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="border border-hearst-border rounded p-4">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Monthly Interest & OPEX</h3>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={debtChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
+                      <YAxis tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} formatter={(v: number) => formatUSD(v)} />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <Bar dataKey="OPEX Paid" fill="#f59e0b" opacity={0.7} name="OPEX" />
+                      <Bar dataKey="Interest Accrued" fill="#ef4444" opacity={0.7} name="Interest" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ═══════════ BTC LTV MONITOR TAB ═══════════ */}
+          {viewTab === 'btc_ltv' && isBitcoin && (() => {
+            const liqLtv = runData.input_snapshot?.bitcoin_config?.liquidation_ltv_pct || 80;
+            const maxLtv = runData.input_snapshot?.bitcoin_config?.collateral_ltv_pct || 50;
+
+            const ltvChartData = (() => {
+              const base = runData.scenario_results['base'] || runData.scenario_results[scenarios[0]];
+              const months = base?.monthly_data?.length || 0;
+              return Array.from({ length: months }, (_, t) => {
+                const row: any = { month: t };
+                for (const s of scenarios) {
+                  const md = runData.scenario_results[s]?.monthly_data;
+                  row[`${s}_ltv`] = Math.min(md?.[t]?.ltv_pct || 0, 120);
+                }
+                return row;
+              });
+            })();
+
+            return (
+              <div className="space-y-5">
+                <div className="grid grid-cols-3 gap-4">
+                  {scenarios.map(s => {
+                    const m = runData.scenario_results[s]?.metrics;
+                    return (
+                      <div key={s} className="space-y-3">
+                        <h4 className="text-xs font-semibold uppercase" style={{ color: SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS] }}>{SCENARIO_LABELS[s]}</h4>
+                        <MetricCard label="Final LTV" value={`${formatNumber(m?.final_ltv_pct || 0, 1)}%`} status={(m?.final_ltv_pct || 0) >= liqLtv ? 'red' : (m?.final_ltv_pct || 0) >= liqLtv * 0.8 ? 'yellow' : 'green'} />
+                        <MetricCard label="Max LTV Reached" value={`${formatNumber(m?.max_ltv_pct || 0, 1)}%`} status={(m?.max_ltv_pct || 0) >= liqLtv ? 'red' : 'neutral'} />
+                        <MetricCard label="Min LTV" value={`${formatNumber(m?.min_ltv_pct || 0, 1)}%`} status="green" />
+                        <MetricCard label="Liquidation Risk Months" value={`${m?.liquidation_risk_months || 0}`} status={(m?.liquidation_risk_months || 0) > 0 ? 'red' : 'green'} />
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="border border-hearst-border rounded p-4">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">LTV Ratio Over Time</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <ComposedChart data={ltvChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
+                      <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `${v}%`} />
+                      <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} formatter={(v: number, name: string) => [`${v.toFixed(1)}%`, name]} />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <ReferenceLine y={liqLtv} stroke="#ef4444" strokeDasharray="6 3" strokeWidth={2} label={{ value: `Liquidation (${liqLtv}%)`, position: 'right', fontSize: 9, fill: '#ef4444' }} />
+                      <ReferenceLine y={maxLtv} stroke="#f59e0b" strokeDasharray="4 2" strokeWidth={1.5} label={{ value: `Max Borrow (${maxLtv}%)`, position: 'right', fontSize: 9, fill: '#f59e0b' }} />
+                      {scenarios.map(s => (
+                        <Line key={s} type="monotone" dataKey={`${s}_ltv`} stroke={SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS]} strokeWidth={s === 'base' ? 2 : 1.5} strokeDasharray={s === 'base' ? undefined : '5 3'} dot={false} name={`${SCENARIO_LABELS[s]} LTV`} />
+                      ))}
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                  <p className="text-[10px] text-neutral-600 mt-1">
+                    Red line = liquidation threshold. Amber line = max borrowing LTV. Below max borrow = healthy zone.
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ═══════════ BTC STRIKE EVENTS TAB ═══════════ */}
+          {viewTab === 'btc_strikes' && isBitcoin && (() => {
+            const activeScenario = scenarios.includes(waterfallScenario) ? waterfallScenario : scenarios[0];
+            const strikeEvts: any[] = runData.scenario_results[activeScenario]?.strike_events || [];
+            const strikeLadder: any[] = runData.scenario_results[activeScenario]?.strike_ladder_status || [];
+
+            return (
+              <div className="space-y-5">
+                <div className="flex gap-1 mb-2">
+                  {scenarios.map(s => (
+                    <button key={s} onClick={() => setWaterfallScenario(s)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded transition-colors uppercase ${activeScenario === s ? 'bg-hearst-border text-white' : 'bg-hearst-card text-neutral-500 hover:text-neutral-300'}`}
+                      style={activeScenario === s ? { borderBottom: `2px solid ${SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS]}` } : undefined}
+                    >{SCENARIO_LABELS[s]}</button>
+                  ))}
+                </div>
+
+                {/* Strike Ladder Status */}
+                <div className="border border-hearst-border rounded overflow-hidden">
+                  <div className="px-3 py-2 bg-hearst-card border-b border-hearst-border">
+                    <span className="text-xs font-medium text-neutral-400">Strike Ladder — {SCENARIO_LABELS[activeScenario]}</span>
+                  </div>
+                  <table className="data-table text-[11px]">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Strike Price</th>
+                        <th>Sell %</th>
+                        <th>Status</th>
+                        <th>Trigger Month</th>
+                        <th>BTC Sold</th>
+                        <th>USD Received</th>
+                        <th>Debt Repaid</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {strikeLadder.map((s: any, i: number) => (
+                        <tr key={i} className={s.triggered ? 'bg-green-900/10' : ''}>
+                          <td className="font-semibold">{i + 1}</td>
+                          <td className="font-mono">{formatUSD(s.strike_price)}</td>
+                          <td className="font-mono">{s.btc_sell_pct}%</td>
+                          <td>
+                            {s.triggered ? (
+                              <span className="text-green-400 font-semibold">TRIGGERED</span>
+                            ) : (
+                              <span className="text-neutral-500">Pending</span>
+                            )}
+                          </td>
+                          <td className="font-mono">{s.trigger_month !== null ? s.trigger_month : '—'}</td>
+                          <td className="font-mono text-amber-400">{s.triggered ? formatBTC(s.btc_sold) : '—'}</td>
+                          <td className="font-mono">{s.triggered ? formatUSD(s.usd_received) : '—'}</td>
+                          <td className="font-mono text-green-400">{s.triggered ? formatUSD(s.debt_repaid) : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Strike Event Detail Log */}
+                {strikeEvts.length > 0 ? (
+                  <div className="border border-hearst-border rounded overflow-hidden">
+                    <div className="px-3 py-2 bg-hearst-card border-b border-hearst-border">
+                      <span className="text-xs font-medium text-neutral-400">Strike Event Log</span>
+                    </div>
+                    <table className="data-table text-[11px]">
+                      <thead>
+                        <tr>
+                          <th>Month</th>
+                          <th>Strike Price</th>
+                          <th>Spot Price</th>
+                          <th>BTC Sold</th>
+                          <th>USD Received</th>
+                          <th>Debt Repaid</th>
+                          <th>Surplus → Reserve</th>
+                          <th>Remaining Debt</th>
+                          <th>Remaining BTC</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {strikeEvts.map((evt: any, i: number) => (
+                          <tr key={i} className="bg-green-900/10">
+                            <td className="font-semibold">{evt.month}</td>
+                            <td className="font-mono">{formatUSD(evt.strike_price)}</td>
+                            <td className="font-mono">{formatUSD(evt.btc_price_usd)}</td>
+                            <td className="font-mono text-amber-400">{formatBTC(evt.btc_sold)}</td>
+                            <td className="font-mono">{formatUSD(evt.usd_received)}</td>
+                            <td className="font-mono text-green-400">{formatUSD(evt.debt_repaid)}</td>
+                            <td className="font-mono text-cyan-400">{formatUSD(evt.surplus_to_reserve)}</td>
+                            <td className="font-mono text-red-400">{formatUSD(evt.remaining_debt)}</td>
+                            <td className="font-mono">{formatBTC(evt.remaining_btc)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-32 text-sm text-neutral-600 border border-hearst-border rounded">
+                    No strikes triggered in the {SCENARIO_LABELS[activeScenario]} scenario. BTC price did not reach any strike levels.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* ═══════════ BTC MINING DETAIL TAB ═══════════ */}
+          {viewTab === 'btc_mining' && isBitcoin && (() => {
+            const activeScenario = scenarios.includes(waterfallScenario) ? waterfallScenario : scenarios[0];
+            const md: any[] = runData.scenario_results[activeScenario]?.monthly_data || [];
+            const production: any[] = runData.scenario_results[activeScenario]?.mining_production || [];
+            const metrics = runData.scenario_results[activeScenario]?.metrics || {};
+
+            return (
+              <div className="space-y-5">
+                <div className="flex gap-1 mb-2">
+                  {scenarios.map(s => (
+                    <button key={s} onClick={() => setWaterfallScenario(s)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded transition-colors uppercase ${activeScenario === s ? 'bg-hearst-border text-white' : 'bg-hearst-card text-neutral-500 hover:text-neutral-300'}`}
+                      style={activeScenario === s ? { borderBottom: `2px solid ${SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS]}` } : undefined}
+                    >{SCENARIO_LABELS[s]}</button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-4 gap-4">
+                  <MetricCard label="Total BTC Mined" value={formatBTC(metrics.total_btc_mined || 0)} status="green" />
+                  <MetricCard label="Total OPEX" value={formatUSD(metrics.total_opex_paid_usd || 0)} />
+                  <MetricCard label="Miner CapEx" value={formatUSD(metrics.miner_capex_usd || 0)} />
+                  <MetricCard label="Effective Months" value={`${metrics.effective_months || 0}`} />
+                </div>
+
+                <div className="border border-hearst-border rounded p-4">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Monthly BTC Production & OPEX</h3>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <ComposedChart data={production}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
+                      <YAxis yAxisId="btc" tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => v.toFixed(4)} />
+                      <YAxis yAxisId="usd" orientation="right" tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <Bar yAxisId="btc" dataKey="btc_produced" fill="#f59e0b" opacity={0.7} name="BTC Produced" />
+                      <Line yAxisId="usd" type="monotone" dataKey="opex_usd" stroke="#ef4444" strokeWidth={1.5} dot={false} name="OPEX ($)" />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Monthly Detail Table */}
+                <div className="border border-hearst-border rounded overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 bg-hearst-card border-b border-hearst-border">
+                    <span className="text-xs font-medium text-neutral-400">Monthly Detail — {SCENARIO_LABELS[activeScenario]}</span>
+                    <button
+                      className="text-[10px] text-neutral-500 hover:text-neutral-300 transition-colors"
+                      onClick={() => exportAsCSV(md, `bitcoin-monthly-${activeScenario}-${selectedRunId.slice(0, 8)}.csv`)}
+                    >
+                      Export CSV
+                    </button>
+                  </div>
+                  <div className="overflow-auto" style={{ maxHeight: '500px' }}>
+                    <table className="data-table text-[11px]">
+                      <thead>
+                        <tr>
+                          <th className="sticky left-0 z-10 bg-hearst-card">Mo</th>
+                          <th>BTC Price</th>
+                          <th>BTC Mined</th>
+                          <th>BTC Collateral</th>
+                          <th>Collateral $</th>
+                          <th>OPEX</th>
+                          <th>Interest</th>
+                          <th>Debt</th>
+                          <th>Reserve</th>
+                          <th>LTV %</th>
+                          <th>Net Equity</th>
+                          <th>Strike</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {md.map((m: any) => {
+                          const liqLtv = runData.input_snapshot?.bitcoin_config?.liquidation_ltv_pct || 80;
+                          const isRisk = m.liquidation_risk;
+                          const hasStrike = m.strike_sold_btc > 0;
+                          const rowClass = hasStrike ? 'bg-green-900/15' : isRisk ? 'bg-red-900/15' : '';
+                          return (
+                            <tr key={m.month} className={rowClass}>
+                              <td className={`sticky left-0 z-10 font-semibold ${hasStrike ? 'bg-green-900/25' : isRisk ? 'bg-red-900/25' : 'bg-hearst-card'}`}>{m.month}</td>
+                              <td className="font-mono">{formatUSD(m.btc_price_usd)}</td>
+                              <td className="font-mono text-amber-400">{formatBTC(m.btc_mined)}</td>
+                              <td className="font-mono">{formatBTC(m.btc_collateral)}</td>
+                              <td className="font-mono">{formatUSD(m.collateral_value_usd)}</td>
+                              <td className="font-mono">{formatUSD(m.opex_usd)}</td>
+                              <td className="font-mono text-red-400">{formatUSD(m.interest_usd)}</td>
+                              <td className="font-mono text-red-400">{formatUSD(m.stablecoin_debt)}</td>
+                              <td className="font-mono text-cyan-400">{formatUSD(m.stablecoin_reserve)}</td>
+                              <td className={`font-mono font-semibold ${m.ltv_pct >= liqLtv ? 'text-red-400' : m.ltv_pct >= liqLtv * 0.8 ? 'text-yellow-400' : 'text-green-400'}`}>{formatNumber(m.ltv_pct, 1)}%</td>
+                              <td className={`font-mono font-semibold ${m.net_equity_usd >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatUSD(m.net_equity_usd)}</td>
+                              <td>
+                                {hasStrike ? (
+                                  <span className="text-green-400 font-semibold">STRIKE</span>
+                                ) : m.opex_shortfall ? (
+                                  <span className="text-red-400">SHORTFALL</span>
+                                ) : (
+                                  <span className="text-neutral-600">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="px-3 py-2 bg-hearst-card border-t border-hearst-border text-[10px] text-neutral-600">
+                    <span className="text-green-400 font-medium">STRIKE</span> = BTC sold at strike price &nbsp;|&nbsp;
+                    <span className="text-red-400 font-medium">SHORTFALL</span> = Could not mint enough to cover OPEX &nbsp;|&nbsp;
+                    LTV colors: <span className="text-green-400">Safe</span> / <span className="text-yellow-400">Warning</span> / <span className="text-red-400">Liquidation risk</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ═══════════════════════════════════════════════════
+           *  BUCKETS SCENARIO TABS (existing — waterfall)
+           * ═══════════════════════════════════════════════════ */}
 
           {/* ═══════════ WATERFALL DETAIL TAB ═══════════ */}
           {viewTab === 'waterfall' && (() => {

@@ -45,6 +45,45 @@ def seed():
     )
     db.add(miner_s21xp)
 
+    # Seed Miner: Bitmain Antminer U3S21EXPH (HK Hydro Cooling)
+    miner_u3s21exph = Miner(
+        id="seed-miner-u3s21exph",
+        name="Antminer U3S21EXPH 860T (HK Hydro)",
+        hashrate_th=860.0,
+        power_w=11180.0,
+        price_usd=10922.0,  # $12.7/T × 860
+        lifetime_months=36,
+        maintenance_pct=0.02,
+        efficiency_j_th=11180.0 / 860.0,  # ~13.0 J/TH
+    )
+    db.add(miner_u3s21exph)
+
+    # Seed Miner: Bitmain Antminer S21 XP Hyd (HK Hydro Cooling)
+    miner_s21xphyd = Miner(
+        id="seed-miner-s21xphyd",
+        name="Antminer S21 XP Hyd 473T (HK Hydro)",
+        hashrate_th=473.0,
+        power_w=5676.0,
+        price_usd=6622.0,  # $14/T × 473
+        lifetime_months=36,
+        maintenance_pct=0.02,
+        efficiency_j_th=5676.0 / 473.0,  # 12.0 J/TH
+    )
+    db.add(miner_s21xphyd)
+
+    # Seed Miner: Bitmain Antminer S21e XP Hyd (HK Hydro Cooling, 7-day delivery)
+    miner_s21exphyd = Miner(
+        id="seed-miner-s21exphyd",
+        name="Antminer S21e XP Hyd 430T (HK Hydro)",
+        hashrate_th=430.0,
+        power_w=5590.0,
+        price_usd=5504.0,  # $12.8/T × 430
+        lifetime_months=36,
+        maintenance_pct=0.02,
+        efficiency_j_th=5590.0 / 430.0,  # 13.0 J/TH
+    )
+    db.add(miner_s21exphyd)
+
     # Seed Hosting Site: Texas Data Center
     site_tx = HostingSite(
         id="seed-site-texas",
@@ -73,6 +112,20 @@ def seed():
     )
     db.add(site_wy)
 
+    # Seed Hosting Site: USA Standard (HK Hydro miners)
+    site_usa = HostingSite(
+        id="seed-site-usa-standard",
+        name="USA Standard Site ($0.06/kWh)",
+        electricity_price_usd_per_kwh=0.06,
+        hosting_fee_usd_per_kw_month=5.0,
+        uptime_expectation=0.95,
+        curtailment_pct=0.02,
+        capacity_mw_available=50.0,
+        lockup_months=12,
+        notice_period_days=30,
+    )
+    db.add(site_usa)
+
     # Seed sample ops history (6 months)
     sample_ops = [
         {"month": "2024-07", "btc_produced": 0.0045, "uptime": 0.93, "energy_kwh": 2400},
@@ -88,8 +141,8 @@ def seed():
     db.commit()
     db.close()
     print("Seed data created successfully:")
-    print("  - 2 miners (S21, S21 XP)")
-    print("  - 2 hosting sites (Texas, Wyoming)")
+    print("  - 5 miners (S21, S21 XP, U3S21EXPH 860T, S21 XP Hyd 473T, S21e XP Hyd 430T)")
+    print("  - 3 hosting sites (Texas, Wyoming, USA Standard $0.06/kWh)")
     print("  - 6 months ops history")
 
 

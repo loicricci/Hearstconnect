@@ -8,12 +8,18 @@ import { getCachedAccessToken } from './supabase';
 
 const API_BASE = '/api';
 
-function getAccessToken(): string | null {
-  return getCachedAccessToken();
+async function getAccessToken(): Promise<string | null> {
+  const cached = getCachedAccessToken();
+  if (cached) return cached;
+
+  const { createBrowserClient } = await import('./supabase');
+  const supabase = createBrowserClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ?? null;
 }
 
 async function request<T = any>(path: string, options?: RequestInit): Promise<T> {
-  const token = getAccessToken();
+  const token = await getAccessToken();
   const authHeaders: Record<string, string> = {};
   if (token) {
     authHeaders['Authorization'] = `Bearer ${token}`;
@@ -30,8 +36,13 @@ async function request<T = any>(path: string, options?: RequestInit): Promise<T>
 
   if (!res.ok) {
     if (res.status === 401) {
-      window.location.href = '/login';
-      throw new Error('Session expired');
+      const { createBrowserClient } = await import('./supabase');
+      const supabase = createBrowserClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        window.location.href = '/login';
+        throw new Error('Session expired');
+      }
     }
     const error = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(error.detail || `API Error: ${res.status}`);

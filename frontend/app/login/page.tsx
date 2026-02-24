@@ -95,7 +95,7 @@ export default function LoginPage() {
               className="object-contain mix-blend-lighten mb-3"
               priority
             />
-            <p className="text-xs text-neutral-500">Mining Analytics Platform</p>
+            <p className="text-xs text-neutral-500">Hearst Connect Simulation</p>
           </div>
 
           <Suspense fallback={null}>

@@ -31,7 +31,7 @@ export default function HearstConnectLayout({ children }: { children: React.Reac
             className="object-contain mix-blend-lighten"
             priority
           />
-          <p className="text-[10px] text-neutral-600">Mining Analytics Platform</p>
+          <p className="text-[10px] text-neutral-600">Hearst Connect Simulation</p>
         </div>
         <div className="flex-1 py-2 overflow-auto">
           {NAV_ITEMS.map(item => {

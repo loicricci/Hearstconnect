@@ -55,6 +55,14 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     window.location.href = '/login';
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-hearst-dark flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-hearst-accent border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <AuthContext.Provider
       value={{

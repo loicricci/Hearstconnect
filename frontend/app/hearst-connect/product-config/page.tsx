@@ -220,6 +220,8 @@ export default function ProductConfigPage() {
     { strike_price: 150000, btc_sell_pct: 25 },
     { strike_price: 200000, btc_sell_pct: 30 },
   ]);
+  const [btcBaseYieldApr, setBtcBaseYieldApr] = useState(0.08);
+  const [btcBonusYieldApr, setBtcBonusYieldApr] = useState(0.04);
 
   // ── Bitcoin Derived Values ──
   const btcCapital = capitalRaised * (btcAllocPct / 100);
@@ -507,6 +509,8 @@ export default function ProductConfigPage() {
             hosting_site_id: btcSelectedSite,
             miner_count: btcMinerCount,
             strike_ladder: btcStrikeLadder,
+            base_yield_apr: btcBaseYieldApr,
+            bonus_yield_apr: btcBonusYieldApr,
           },
           commercial: (upfrontCommercialPct > 0 || managementFeesPct > 0 || performanceFeesPct > 0) ? {
             upfront_commercial_pct: upfrontCommercialPct,
@@ -873,6 +877,51 @@ export default function ProductConfigPage() {
                   Total sell allocation: {btcStrikeLadder.reduce((s, e) => s + e.btc_sell_pct, 0).toFixed(0)}% of BTC collateral at time of strike
                 </div>
               )}
+            </div>
+
+            {/* Yield Structure */}
+            <div className="border border-hearst-border rounded p-4">
+              <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Yield Structure</h3>
+              <div className="grid grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-neutral-400">Base Yield APR</label>
+                  <input type="number" value={btcBaseYieldApr} onChange={e => setBtcBaseYieldApr(Number(e.target.value))} className="w-full" step={0.01} />
+                  <p className="text-[10px] text-neutral-600">{(btcBaseYieldApr * 100).toFixed(0)}% base yield from mining</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-neutral-400">Bonus Yield APR</label>
+                  <input type="number" value={btcBonusYieldApr} onChange={e => setBtcBonusYieldApr(Number(e.target.value))} className="w-full" step={0.01} />
+                  <p className="text-[10px] text-neutral-600">+{(btcBonusYieldApr * 100).toFixed(0)}% when BTC target hit</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-neutral-400">Combined APR</label>
+                  <div className="w-full px-2 py-1.5 rounded bg-hearst-card border border-hearst-border-light text-sm text-hearst-accent tabular-nums font-semibold">
+                    {((btcBaseYieldApr + btcBonusYieldApr) * 100).toFixed(0)}% <span className="text-neutral-500 font-normal">when target hit</span>
+                  </div>
+                  <p className="text-[10px] text-neutral-600">Mining yield cap bumps to combined rate</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center min-h-[20px]">
+                    <label className="text-xs font-medium text-neutral-400">Early Close Target</label>
+                    <Tooltip text={`Product closes early when cumulative yield reaches this % of capital raised. Default: ${((btcBaseYieldApr + btcBonusYieldApr) * 100).toFixed(0)}% x ${Math.round(btcTenor / 12)} years = ${((btcBaseYieldApr + btcBonusYieldApr) * 100 * Math.round(btcTenor / 12)).toFixed(0)}%.`} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={earlyCloseThreshold}
+                      onChange={e => setEarlyCloseThreshold(Math.max(0, Math.min(100, Number(e.target.value))))}
+                      className="w-full"
+                      min={0} max={100} step={1}
+                    />
+                    <span className="text-xs text-neutral-500">%</span>
+                  </div>
+                  <p className="text-[10px] text-neutral-600">
+                    {earlyCloseThreshold > 0
+                      ? `Close when yield ≥ ${earlyCloseThreshold}% of capital`
+                      : 'Disabled (full tenor)'}
+                  </p>
+                </div>
+              </div>
             </div>
           </>
         )}

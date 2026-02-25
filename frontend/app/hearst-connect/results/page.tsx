@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -11,7 +11,7 @@ import SelectField from '@/components/SelectField';
 import MetricCard from '@/components/MetricCard';
 import DataTable from '@/components/DataTable';
 import { productConfigApi } from '@/lib/api';
-import { formatUSD, formatPercent, formatNumber, formatBTC, exportAsJSON, exportAsCSV } from '@/lib/utils';
+import { formatUSD, formatPercent, formatNumber, formatBTC, exportAsJSON, exportAsCSV, exportAsPDF } from '@/lib/utils';
 
 const SCENARIO_COLORS = {
   bear: '#ef4444',
@@ -26,7 +26,7 @@ const SCENARIO_LABELS: Record<string, string> = {
 };
 
 type ViewTab = 'overview' | 'yield' | 'holding' | 'mining' | 'btc_mgmt' | 'commercial' | 'waterfall'
-  | 'btc_overview' | 'btc_collateral' | 'btc_debt' | 'btc_ltv' | 'btc_strikes' | 'btc_mining';
+  | 'btc_overview' | 'btc_collateral' | 'btc_debt' | 'btc_ltv' | 'btc_strikes' | 'btc_mining' | 'btc_yield';
 
 export default function ResultsPage() {
   return (
@@ -49,6 +49,8 @@ function ResultsContent() {
   const [waterfallScenario, setWaterfallScenario] = useState<string>('base');
   const [confirmDelete, setConfirmDelete] = useState<'single' | 'all' | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { loadRuns(); }, []);
 
@@ -152,6 +154,7 @@ function ResultsContent() {
 
   const BITCOIN_TABS: { key: ViewTab; label: string }[] = [
     { key: 'btc_overview', label: 'Overview' },
+    { key: 'btc_yield', label: 'Interest Payments' },
     { key: 'btc_collateral', label: 'BTC Collateral' },
     { key: 'btc_debt', label: 'Stablecoin Debt' },
     { key: 'btc_ltv', label: 'LTV Monitor' },
@@ -205,6 +208,25 @@ function ResultsContent() {
                 }}
               >
                 Export CSV
+              </button>
+              <button
+                className="btn-primary text-[10px] flex items-center gap-1.5 disabled:opacity-50"
+                disabled={generatingPdf}
+                onClick={() => {
+                  if (!resultsRef.current) return;
+                  const label = isBitcoin ? 'btc-collateral' : 'buckets';
+                  exportAsPDF(
+                    resultsRef.current,
+                    `hearst-${label}-results-${selectedRunId.slice(0, 8)}.pdf`,
+                    () => setGeneratingPdf(true),
+                    () => setGeneratingPdf(false),
+                  );
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M8 1v9m0 0L5 7m3 3l3-3M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                {generatingPdf ? 'Generating...' : 'Download PDF'}
               </button>
             </>
           )}
@@ -270,7 +292,7 @@ function ResultsContent() {
       )}
 
       {hasData && (
-        <div className="space-y-6">
+        <div ref={resultsRef} className="space-y-6">
           {/* ═══════════ Scenario Type Badge ═══════════ */}
           <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded text-xs font-semibold ${
             isBitcoin ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' : 'bg-hearst-accent/20 text-hearst-accent border border-hearst-accent/40'
@@ -1355,6 +1377,29 @@ function ResultsContent() {
                         ))}
                       </tr>
                       <tr>
+                        <td className="font-medium text-neutral-400">Total Yield Paid</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono text-green-400">{formatUSD(runData.scenario_results[s]?.metrics?.total_yield_paid_usd || 0)}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Effective Yield APR</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono">{formatPercent(runData.scenario_results[s]?.metrics?.effective_yield_apr || 0)}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Early Close</td>
+                        {scenarios.map(s => {
+                          const m = runData.scenario_results[s]?.metrics;
+                          return (
+                            <td key={s} className={`font-mono ${m?.early_close_triggered ? 'text-green-400' : 'text-neutral-500'}`}>
+                              {m?.early_close_triggered ? `Month ${m.early_close_month}` : '—'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                      <tr>
                         <td className="font-medium text-neutral-400">Total Interest Paid</td>
                         {scenarios.map(s => (
                           <td key={s} className="font-mono text-amber-400">{formatUSD(runData.scenario_results[s]?.metrics?.total_interest_paid_usd || 0)}</td>
@@ -1417,6 +1462,206 @@ function ResultsContent() {
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
+              </div>
+            );
+          })()}
+
+          {/* ═══════════ BTC INTEREST PAYMENTS TAB ═══════════ */}
+          {viewTab === 'btc_yield' && isBitcoin && (() => {
+            const activeScenario = scenarios.includes(waterfallScenario) ? waterfallScenario : scenarios[0];
+            const md: any[] = runData.scenario_results[activeScenario]?.monthly_data || [];
+            const metrics = runData.scenario_results[activeScenario]?.metrics || {};
+            const capitalRaised = metrics.capital_raised_usd || 0;
+            const earlyCloseThresholdPct = metrics.early_close_threshold_pct || 0;
+
+            const yieldChartData = md.map((m: any) => ({
+              month: m.month,
+              yield_paid: m.yield_paid_usd || 0,
+              yield_obligation: m.yield_obligation_usd || 0,
+              cumulative_yield: m.cumulative_yield_paid_usd || 0,
+              yield_from_reserve: m.yield_from_reserve_usd || 0,
+              yield_from_btc: m.yield_from_btc_sale_usd || 0,
+            }));
+
+            const cumulativeChartData = md.map((m: any) => ({
+              month: m.month,
+              cumulative_yield: m.cumulative_yield_paid_usd || 0,
+              target: earlyCloseThresholdPct * capitalRaised,
+            }));
+
+            const quarterlyYield: { quarter: number; yield_usd: number; cumulative_usd: number; cumulative_pct: number }[] = [];
+            for (let q = 0; q < Math.ceil(md.length / 3); q++) {
+              const qStart = q * 3;
+              const qEnd = Math.min(qStart + 3, md.length);
+              const qYield = md.slice(qStart, qEnd).reduce((s: number, m: any) => s + (m.yield_paid_usd || 0), 0);
+              const cumYield = md.slice(0, qEnd).reduce((s: number, m: any) => s + (m.yield_paid_usd || 0), 0);
+              quarterlyYield.push({
+                quarter: q + 1,
+                yield_usd: qYield,
+                cumulative_usd: cumYield,
+                cumulative_pct: capitalRaised > 0 ? cumYield / capitalRaised : 0,
+              });
+            }
+
+            return (
+              <div className="space-y-4">
+                {/* Scenario Selector */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] text-neutral-500 uppercase font-semibold">Scenario</span>
+                  {scenarios.map(s => (
+                    <button key={s} onClick={() => setWaterfallScenario(s)}
+                      className={`px-3 py-1 text-xs rounded-full border transition-all ${waterfallScenario === s ? 'border-hearst-accent bg-hearst-accent/10 text-hearst-accent' : 'border-hearst-border text-neutral-500 hover:text-neutral-300'}`}
+                    >{SCENARIO_LABELS[s]}</button>
+                  ))}
+                </div>
+
+                {/* Key Yield Metrics */}
+                <div className="grid grid-cols-5 gap-3">
+                  <MetricCard
+                    label="Total Yield Paid"
+                    value={formatUSD(metrics.total_yield_paid_usd || 0)}
+                    status="green"
+                  />
+                  <MetricCard
+                    label="Effective Yield APR"
+                    value={formatPercent(metrics.effective_yield_apr || 0)}
+                    sub={`Target: ${formatPercent(metrics.base_yield_apr || 0)} base`}
+                    status={(metrics.effective_yield_apr || 0) >= (metrics.base_yield_apr || 0) ? 'green' : 'yellow'}
+                  />
+                  <MetricCard
+                    label="Cumulative Yield %"
+                    value={formatPercent(metrics.cumulative_yield_pct || 0)}
+                    sub={`of capital raised`}
+                    status={(metrics.cumulative_yield_pct || 0) >= earlyCloseThresholdPct ? 'green' : 'neutral'}
+                  />
+                  <MetricCard
+                    label="Combined APR"
+                    value={formatPercent(metrics.combined_yield_apr || 0)}
+                    sub={`${formatPercent(metrics.base_yield_apr || 0)} + ${formatPercent(metrics.bonus_yield_apr || 0)} bonus`}
+                  />
+                  <MetricCard
+                    label="Early Close"
+                    value={metrics.early_close_triggered ? `Month ${metrics.early_close_month}` : 'Not triggered'}
+                    sub={`Target: ${formatPercent(earlyCloseThresholdPct)} of capital`}
+                    status={metrics.early_close_triggered ? 'green' : 'neutral'}
+                  />
+                </div>
+
+                {/* Monthly Yield Paid Chart */}
+                <div className="border border-hearst-border rounded p-4">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Monthly Yield Paid (USD)</h3>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <ComposedChart data={yieldChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
+                      <YAxis tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} formatter={(v: number) => formatUSD(v)} />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <Bar dataKey="yield_from_reserve" stackId="yield" fill="#06b6d4" name="From Reserve" />
+                      <Bar dataKey="yield_from_btc" stackId="yield" fill="#f59e0b" name="From BTC Sale" />
+                      <Line type="monotone" dataKey="yield_obligation" stroke="#525252" strokeWidth={1} strokeDasharray="5 3" dot={false} name="Yield Obligation" />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Cumulative Yield vs Early Close Target */}
+                <div className="border border-hearst-border rounded p-4">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Cumulative Yield Progress vs Early Close Target</h3>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <AreaChart data={cumulativeChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#737373' }} />
+                      <YAxis tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1_000_000).toFixed(1)}M`} />
+                      <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} formatter={(v: number) => formatUSD(v)} />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <Area type="monotone" dataKey="cumulative_yield" fill="#96EA7A20" stroke="#96EA7A" strokeWidth={2} name="Cumulative Yield Paid" />
+                      <ReferenceLine y={earlyCloseThresholdPct * capitalRaised} stroke="#f59e0b" strokeDasharray="6 3" label={{ value: `Early Close (${(earlyCloseThresholdPct * 100).toFixed(0)}%)`, position: 'right', fontSize: 9, fill: '#f59e0b' }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Multi-Scenario Comparison */}
+                <div className="border border-hearst-border rounded overflow-hidden">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Metric</th>
+                        {scenarios.map(s => (
+                          <th key={s} style={{ color: SCENARIO_COLORS[s as keyof typeof SCENARIO_COLORS] }}>{SCENARIO_LABELS[s]}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Total Yield Paid</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono text-green-400">{formatUSD(runData.scenario_results[s]?.metrics?.total_yield_paid_usd || 0)}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Effective Yield APR</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono">{formatPercent(runData.scenario_results[s]?.metrics?.effective_yield_apr || 0)}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Cumulative Yield %</td>
+                        {scenarios.map(s => (
+                          <td key={s} className="font-mono">{formatPercent(runData.scenario_results[s]?.metrics?.cumulative_yield_pct || 0)}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="font-medium text-neutral-400">Early Close</td>
+                        {scenarios.map(s => {
+                          const m = runData.scenario_results[s]?.metrics;
+                          return (
+                            <td key={s} className={`font-mono ${m?.early_close_triggered ? 'text-green-400' : 'text-neutral-500'}`}>
+                              {m?.early_close_triggered ? `Month ${m.early_close_month}` : '—'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Quarterly Yield Summary */}
+                <div className="border border-hearst-border rounded p-4">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase mb-3">Quarterly Yield Summary ({SCENARIO_LABELS[activeScenario]})</h3>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <ComposedChart data={quarterlyYield}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                      <XAxis dataKey="quarter" tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `Q${v}`} />
+                      <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
+                      <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#737373' }} tickFormatter={v => `${(v * 100).toFixed(0)}%`} />
+                      <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333333', borderRadius: 4, fontSize: 11 }} />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <Bar yAxisId="left" dataKey="yield_usd" fill="#96EA7A" name="Quarterly Yield (USD)" />
+                      <Line yAxisId="right" type="monotone" dataKey="cumulative_pct" stroke="#f59e0b" strokeWidth={2} dot={false} name="Cumulative Yield %" />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Monthly Yield Detail Table */}
+                <DataTable
+                  title={`Monthly Yield Detail (${SCENARIO_LABELS[activeScenario]})`}
+                  columns={[
+                    { key: 'month', label: 'Mo' },
+                    { key: 'btc_price_usd', label: 'BTC Price', format: (v: number) => formatUSD(v) },
+                    { key: 'yield_apr_applied', label: 'APR', format: (v: number) => formatPercent(v || 0) },
+                    { key: 'yield_obligation_usd', label: 'Obligation', format: (v: number) => formatUSD(v || 0) },
+                    { key: 'yield_paid_usd', label: 'Yield Paid', format: (v: number) => formatUSD(v || 0) },
+                    { key: 'yield_from_reserve_usd', label: 'From Reserve', format: (v: number) => formatUSD(v || 0) },
+                    { key: 'yield_from_btc_sale_usd', label: 'From BTC', format: (v: number) => formatUSD(v || 0) },
+                    { key: 'yield_btc_sold', label: 'BTC Sold', format: (v: number) => (v || 0).toFixed(6) },
+                    { key: 'yield_fulfillment', label: 'Fulfillment', format: (v: number) => formatPercent(v || 0) },
+                    { key: 'cumulative_yield_paid_usd', label: 'Cumulative', format: (v: number) => formatUSD(v || 0) },
+                    { key: 'bonus_yield_active', label: 'Bonus', format: (v: boolean) => v ? 'Yes' : '—' },
+                  ]}
+                  rows={md}
+                  exportName={`yield-detail-${selectedRunId.slice(0, 8)}-${activeScenario}`}
+                  maxHeight="400px"
+                />
               </div>
             );
           })()}

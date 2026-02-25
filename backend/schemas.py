@@ -402,6 +402,18 @@ class BitcoinScenarioConfig(BaseModel):
         default=[],
         description="BTC price ladder — sell BTC to repay debt when strikes are hit"
     )
+    base_yield_apr: float = Field(
+        default=0.08,
+        ge=0.0,
+        le=1.0,
+        description="Base annual yield rate paid to investors from mining surplus (e.g. 0.08 = 8%)"
+    )
+    bonus_yield_apr: float = Field(
+        default=0.04,
+        ge=0.0,
+        le=1.0,
+        description="Bonus annual yield added when any strike in the ladder is hit (e.g. 0.04 = 4%)"
+    )
 
 
 class ProductConfigRequest(BaseModel):

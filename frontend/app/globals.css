@@ -101,3 +101,19 @@ input[type="number"]:focus, input[type="text"]:focus, input[type="date"]:focus, 
     background-color: rgba(150, 234, 122, 0.08);
   }
 }
+
+/* PDF capture mode — expand containers so nothing is clipped */
+.pdf-capture,
+.pdf-capture * {
+  overflow: visible !important;
+}
+.pdf-capture .recharts-wrapper {
+  overflow: visible !important;
+}
+.pdf-capture table {
+  page-break-inside: auto;
+}
+.pdf-capture tr {
+  page-break-inside: avoid;
+  page-break-after: auto;
+}

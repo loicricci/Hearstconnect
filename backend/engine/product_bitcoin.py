@@ -53,6 +53,10 @@ def simulate_bitcoin_scenario(
     strike_ladder: List[Dict] = None,
     # Reserve yield
     reserve_yield_apr: float = 0.04,
+    # Investor yield
+    base_yield_apr: float = 0.08,
+    bonus_yield_apr: float = 0.04,
+    early_close_threshold_pct: float = 0.36,
     # Commercial
     upfront_commercial_pct: float = 0.0,
     management_fees_pct: float = 0.0,
@@ -122,6 +126,12 @@ def simulate_bitcoin_scenario(
     total_reserve_yield = 0.0
     liquidation_months = 0
 
+    # Investor yield tracking
+    cumulative_yield_paid = 0.0
+    total_yield_paid = 0.0
+    bonus_active = False
+    early_close_month: Optional[int] = None
+
     sim_months = min(tenor_months, len(btc_prices), len(hashprice_btc_per_ph_day))
 
     for t in range(sim_months):
@@ -189,6 +199,41 @@ def simulate_bitcoin_scenario(
             total_mgmt_fees += mgmt_fee
 
         # ──────────────────────────────────────────────
+        # 5b) INVESTOR YIELD — paid from reserve, then by selling mined BTC
+        # ──────────────────────────────────────────────
+        if bonus_active:
+            current_yield_apr = base_yield_apr + bonus_yield_apr
+        else:
+            current_yield_apr = base_yield_apr
+        yield_obligation_usd = capital_raised_usd * (current_yield_apr / 12.0)
+
+        yield_from_reserve = 0.0
+        yield_from_btc_sale = 0.0
+        yield_btc_sold = 0.0
+        yield_paid_usd = 0.0
+
+        if early_close_month is None:
+            yield_from_reserve = min(stablecoin_reserve, yield_obligation_usd)
+            stablecoin_reserve -= yield_from_reserve
+            yield_remaining = yield_obligation_usd - yield_from_reserve
+
+            if yield_remaining > 0 and spot_price > 0 and btc_collateral > 0:
+                btc_needed = yield_remaining / spot_price
+                yield_btc_sold = min(btc_needed, btc_collateral)
+                yield_from_btc_sale = yield_btc_sold * spot_price
+                btc_collateral -= yield_btc_sold
+
+            yield_paid_usd = yield_from_reserve + yield_from_btc_sale
+            cumulative_yield_paid += yield_paid_usd
+            total_yield_paid += yield_paid_usd
+
+            if early_close_threshold_pct > 0 and capital_raised_usd > 0:
+                if cumulative_yield_paid >= early_close_threshold_pct * capital_raised_usd:
+                    early_close_month = t
+
+        yield_fulfillment = yield_paid_usd / yield_obligation_usd if yield_obligation_usd > 0 else 1.0
+
+        # ──────────────────────────────────────────────
         # 6) LTV CHECK
         # ──────────────────────────────────────────────
         collateral_value = btc_collateral * spot_price
@@ -225,6 +270,9 @@ def simulate_bitcoin_scenario(
                 strike["btc_sold"] = round(sell_btc, 8)
                 strike["usd_received"] = round(proceeds, 2)
                 strike["debt_repaid"] = round(repay, 2)
+
+                if not bonus_active:
+                    bonus_active = True
 
                 strike_events.append({
                     "month": t,
@@ -270,6 +318,16 @@ def simulate_bitcoin_scenario(
             # Reserve yield
             "reserve_yield_usd": round(reserve_yield, 2),
             "cumulative_reserve_yield_usd": round(total_reserve_yield, 2),
+            # Investor yield
+            "yield_paid_usd": round(yield_paid_usd, 2),
+            "yield_from_reserve_usd": round(yield_from_reserve, 2),
+            "yield_from_btc_sale_usd": round(yield_from_btc_sale, 2),
+            "yield_btc_sold": round(yield_btc_sold, 8),
+            "yield_obligation_usd": round(yield_obligation_usd, 2),
+            "yield_apr_applied": round(current_yield_apr, 4),
+            "yield_fulfillment": round(yield_fulfillment, 4),
+            "cumulative_yield_paid_usd": round(cumulative_yield_paid, 2),
+            "bonus_yield_active": bonus_active,
             # OPEX
             "opex_usd": round(opex_usd, 2),
             "opex_from_reserve": round(opex_from_reserve, 2),
@@ -327,6 +385,22 @@ def simulate_bitcoin_scenario(
         "total_reserve_yield_usd": round(total_reserve_yield, 2),
         "reserve_yield_apr": round(reserve_yield_apr, 4),
         "total_return_pct": round(total_return_pct, 4),
+        # Investor yield
+        "total_yield_paid_usd": round(total_yield_paid, 2),
+        "cumulative_yield_paid_usd": round(cumulative_yield_paid, 2),
+        "base_yield_apr": round(base_yield_apr, 4),
+        "bonus_yield_apr": round(bonus_yield_apr, 4),
+        "combined_yield_apr": round(base_yield_apr + bonus_yield_apr, 4),
+        "effective_yield_apr": round(
+            (cumulative_yield_paid / capital_raised_usd) / (sim_months / 12.0)
+            if capital_raised_usd > 0 and sim_months > 0 else 0, 4
+        ),
+        "early_close_triggered": early_close_month is not None,
+        "early_close_month": early_close_month,
+        "early_close_threshold_pct": round(early_close_threshold_pct, 4),
+        "cumulative_yield_pct": round(
+            cumulative_yield_paid / capital_raised_usd if capital_raised_usd > 0 else 0, 4
+        ),
         # Risk
         "liquidation_risk_months": liquidation_months,
         "max_ltv_pct": round(max((m["ltv_pct"] for m in monthly_data), default=0), 2),
@@ -373,6 +447,9 @@ def simulate_bitcoin_all_scenarios(
     tenor_months: int,
     strike_ladder: List[Dict] = None,
     reserve_yield_apr: float = 0.04,
+    base_yield_apr: float = 0.08,
+    bonus_yield_apr: float = 0.04,
+    early_close_threshold_pct: float = 0.36,
     upfront_commercial_pct: float = 0.0,
     management_fees_pct: float = 0.0,
     performance_fees_pct: float = 0.0,
@@ -403,6 +480,9 @@ def simulate_bitcoin_all_scenarios(
             tenor_months=tenor_months,
             strike_ladder=strike_ladder,
             reserve_yield_apr=reserve_yield_apr,
+            base_yield_apr=base_yield_apr,
+            bonus_yield_apr=bonus_yield_apr,
+            early_close_threshold_pct=early_close_threshold_pct,
             upfront_commercial_pct=upfront_commercial_pct,
             management_fees_pct=management_fees_pct,
             performance_fees_pct=performance_fees_pct,
